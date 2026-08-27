@@ -129,6 +129,7 @@ def _agent_response(state: dict[str, Any], settings: AgentSettings) -> dict[str,
             if citation.get("document_title")
         )
     )
+    llm_usage = _summarize_llm_usage(state.get("llm_usage_events", []))
     response = {
         "request_id": state["request_id"],
         "question": state["original_question"],
@@ -152,6 +153,7 @@ def _agent_response(state: dict[str, Any], settings: AgentSettings) -> dict[str,
             "iterations": state.get("iteration", 0),
             "tool_call_count": state.get("tool_call_count", 0),
             "llm_call_count": state.get("llm_call_count", 0),
+            "llm_usage": llm_usage,
             "correction_count": state.get("correction_count", 0),
             "actions": state.get("action_history", []),
             "issue_coverage": state.get("issue_coverage", []),
@@ -175,6 +177,33 @@ def _agent_response(state: dict[str, Any], settings: AgentSettings) -> dict[str,
     }
     _validate_agent_response(response, settings)
     return response
+
+
+def _summarize_llm_usage(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """汇总节点用量；任一调用缺少某项 Token 时，该项总计保持 ``None``。"""
+
+    def complete_sum(field: str) -> int | None:
+        values = [event.get(field) for event in events]
+        if not values or any(not isinstance(value, int) for value in values):
+            return None
+        return sum(values)
+
+    return {
+        "call_count": len(events),
+        "successful_calls": sum(event.get("success") is True for event in events),
+        "failed_calls": sum(event.get("success") is False for event in events),
+        "token_reporting_complete": bool(events)
+        and all(
+            isinstance(event.get(field), int)
+            for event in events
+            for field in ("input_tokens", "output_tokens", "total_tokens")
+        ),
+        "input_tokens": complete_sum("input_tokens"),
+        "output_tokens": complete_sum("output_tokens"),
+        "total_tokens": complete_sum("total_tokens"),
+        "duration_ms": round(sum(float(event.get("duration_ms", 0)) for event in events), 2),
+        "events": events,
+    }
 
 
 def _operational_abstention(
@@ -252,6 +281,7 @@ async def _run_agent_once(
             "iterations": state.get("iteration", 0),
             "tool_call_count": state.get("tool_call_count", 0),
             "llm_call_count": state.get("llm_call_count", 0),
+            "llm_usage": _summarize_llm_usage(state.get("llm_usage_events", [])),
             "correction_count": state.get("correction_count", 0),
             "actions": state.get("action_history", []),
             "issue_coverage": state.get("issue_coverage", []),

@@ -27,6 +27,7 @@ class LegalAgentState(TypedDict, total=False):
     iteration: int
     tool_call_count: int
     llm_call_count: int
+    llm_usage_events: list[dict[str, Any]]
     correction_count: int
     no_progress_rounds: int
     started_at: float
@@ -92,6 +93,7 @@ def initial_agent_state(
         "iteration": 0,
         "tool_call_count": 0,
         "llm_call_count": 0,
+        "llm_usage_events": [],
         "correction_count": 0,
         "no_progress_rounds": 0,
         "started_at": time.monotonic(),

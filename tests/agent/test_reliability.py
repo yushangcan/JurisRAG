@@ -22,6 +22,7 @@ from agent.service import (
     AgentCapacityGuard,
     AgentResponseContractError,
     _agent_response,
+    _summarize_llm_usage,
 )
 from agent.state import initial_agent_state
 
@@ -125,5 +126,112 @@ def test_single_llm_call_has_independent_timeout() -> None:
                 "prompt",
                 timeout_seconds=0.001,
             )
+
+    anyio.run(scenario)
+
+
+def test_llm_usage_supports_langchain_standard_metadata() -> None:
+    """标准 usage_metadata 应按节点记录，且记录中不出现 prompt。"""
+
+    class UsageModel:
+        _llm_type = "mock-provider"
+        model_name = "mock-model"
+
+        async def ainvoke(self, _prompt: str):
+            return SimpleNamespace(
+                content='{"answer":"ok"}',
+                usage_metadata={"input_tokens": 10, "output_tokens": 3, "total_tokens": 13},
+            )
+
+    async def scenario() -> None:
+        events: list[dict] = []
+        await invoke_schema(
+            UsageModel(),
+            AnswerDraft,
+            "secret prompt must not be stored",
+            node="generate_answer",
+            usage_events=events,
+        )
+        assert events[0]["node"] == "generate_answer"
+        assert events[0]["provider"] == "mock-provider"
+        assert events[0]["model"] == "mock-model"
+        assert events[0]["total_tokens"] == 13
+        assert "prompt" not in events[0]
+        assert "secret" not in str(events[0])
+
+    anyio.run(scenario)
+
+
+def test_llm_usage_supports_openai_metadata_and_aggregates() -> None:
+    """OpenAI兼容 token_usage 可以归一化，并对多次完整调用求和。"""
+
+    class OpenAIStyleModel:
+        model = "compatible-model"
+
+        async def ainvoke(self, _prompt: str):
+            return SimpleNamespace(
+                content='{"answer":"ok"}',
+                response_metadata={
+                    "token_usage": {
+                        "prompt_tokens": 7,
+                        "completion_tokens": 2,
+                        "total_tokens": 9,
+                    }
+                },
+            )
+
+    async def scenario() -> None:
+        events: list[dict] = []
+        for node in ("generate_answer", "verify_answer"):
+            await invoke_schema(
+                OpenAIStyleModel(), AnswerDraft, "prompt", node=node, usage_events=events
+            )
+        summary = _summarize_llm_usage(events)
+        assert summary["call_count"] == 2
+        assert summary["token_reporting_complete"] is True
+        assert summary["input_tokens"] == 14
+        assert summary["output_tokens"] == 4
+        assert summary["total_tokens"] == 18
+
+    anyio.run(scenario)
+
+
+def test_llm_usage_keeps_missing_provider_tokens_null() -> None:
+    """供应商不报告 Token 时必须为 null，不能用字符数伪造。"""
+
+    class NoUsageModel:
+        async def ainvoke(self, _prompt: str):
+            return SimpleNamespace(content='{"answer":"ok"}')
+
+    async def scenario() -> None:
+        events: list[dict] = []
+        await invoke_schema(
+            NoUsageModel(), AnswerDraft, "prompt", node="generate_answer", usage_events=events
+        )
+        summary = _summarize_llm_usage(events)
+        assert summary["token_reporting_complete"] is False
+        assert summary["input_tokens"] is None
+        assert summary["output_tokens"] is None
+        assert summary["total_tokens"] is None
+
+    anyio.run(scenario)
+
+
+def test_failed_llm_call_is_observed_without_error_message() -> None:
+    """失败只记录异常类型，不保存可能包含敏感内容的异常消息。"""
+
+    class FailingModel:
+        async def ainvoke(self, _prompt: str):
+            raise RuntimeError("api_key=do-not-record")
+
+    async def scenario() -> None:
+        events: list[dict] = []
+        with pytest.raises(RuntimeError):
+            await invoke_schema(
+                FailingModel(), AnswerDraft, "prompt", node="verify_answer", usage_events=events
+            )
+        assert events[0]["success"] is False
+        assert events[0]["error_type"] == "RuntimeError"
+        assert "do-not-record" not in str(events[0])
 
     anyio.run(scenario)

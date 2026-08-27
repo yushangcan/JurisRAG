@@ -146,6 +146,7 @@ class LegalAgentWorkflow:
         analysis = fallback
         warnings = list(state["warnings"])
         llm_calls = state["llm_call_count"]
+        llm_usage_events = list(state["llm_usage_events"])
         if self.model is not None and llm_calls < self.settings.max_llm_calls:
             try:
                 analysis = await invoke_schema(
@@ -153,6 +154,8 @@ class LegalAgentWorkflow:
                     IntentAnalysis,
                     intent_prompt(state["original_question"], fallback),
                     timeout_seconds=self.settings.llm_timeout_seconds,
+                    node="analyze_intent",
+                    usage_events=llm_usage_events,
                 )
                 llm_calls += 1
                 # 用户明确给出的正式引用不能被模型删除或替换。
@@ -163,7 +166,7 @@ class LegalAgentWorkflow:
                     analysis.domain = "uncertain"
             except Exception as exc:
                 llm_calls += 1
-                warnings.append(f"意图模型失败，已使用确定性分析: {type(exc).__name__}: {exc}")
+                warnings.append(f"意图模型失败，已使用确定性分析: {type(exc).__name__}")
 
         route = "select" if analysis.in_scope and analysis.primary_intent != "out_of_scope" else "refuse"
         return {
@@ -179,6 +182,7 @@ class LegalAgentWorkflow:
             "exact_references": [item.model_dump() for item in analysis.exact_references],
             "initial_queries": analysis.initial_queries or fallback.initial_queries,
             "llm_call_count": llm_calls,
+            "llm_usage_events": llm_usage_events,
             "warnings": warnings,
             "route": route,
             "stop_reason": "out_of_scope" if route == "refuse" else "",
@@ -204,6 +208,7 @@ class LegalAgentWorkflow:
         planned_by = "deterministic_policy"
         warnings = list(state["warnings"])
         llm_calls = state["llm_call_count"]
+        llm_usage_events = list(state["llm_usage_events"])
         # 第一轮的正式条号/问题类型路由由确定性信号完成，减少一次无必要模型调用；
         # 第二轮开始模型根据上一轮真实证据缺口选择工具。
         if (
@@ -217,24 +222,32 @@ class LegalAgentWorkflow:
                     ActionDecision,
                     action_prompt(state),
                     timeout_seconds=self.settings.llm_timeout_seconds,
+                    node="select_action",
+                    usage_events=llm_usage_events,
                 )
                 llm_calls += 1
                 approved, signature = validate_action(decision.action, state, self.settings)
                 planned_by = "llm"
             except Exception as exc:
                 llm_calls += 1
-                warnings.append(f"工具规划未通过约束，已使用确定性动作: {type(exc).__name__}: {exc}")
+                warnings.append(f"工具规划未通过约束，已使用确定性动作: {type(exc).__name__}")
 
         if approved is None:
             fallback = first_allowed_deterministic_action(state, self.settings)
             if fallback is None:
                 if state["child_evidence"]:
-                    return {"route": "coverage", "warnings": warnings, "llm_call_count": llm_calls}
+                    return {
+                        "route": "coverage",
+                        "warnings": warnings,
+                        "llm_call_count": llm_calls,
+                        "llm_usage_events": llm_usage_events,
+                    }
                 return {
                     "route": "refuse",
                     "stop_reason": "no_valid_action",
                     "warnings": warnings,
                     "llm_call_count": llm_calls,
+                    "llm_usage_events": llm_usage_events,
                 }
             approved, signature = fallback
 
@@ -244,6 +257,7 @@ class LegalAgentWorkflow:
             "route": "execute",
             "warnings": warnings,
             "llm_call_count": llm_calls,
+            "llm_usage_events": llm_usage_events,
             "public_trace": self._trace(
                 state,
                 "action_planned",
@@ -552,6 +566,7 @@ class LegalAgentWorkflow:
             return {"route": "refuse", "stop_reason": "knowledge_base_gap"}
         available_ids = [evidence_id(row) for row in evidence]
         llm_calls = state["llm_call_count"]
+        llm_usage_events = list(state["llm_usage_events"])
         warnings = list(state["warnings"])
         draft: AnswerDraft | None = None
         if self.model is not None and llm_calls < self.settings.max_llm_calls:
@@ -561,11 +576,13 @@ class LegalAgentWorkflow:
                     AnswerDraft,
                     self._evidence_prompt(state, evidence),
                     timeout_seconds=self.settings.llm_timeout_seconds,
+                    node="generate_answer",
+                    usage_events=llm_usage_events,
                 )
                 llm_calls += 1
             except Exception as exc:
                 llm_calls += 1
-                warnings.append(f"Agent 回答模型失败，使用原文证据回答: {type(exc).__name__}: {exc}")
+                warnings.append(f"Agent 回答模型失败，使用原文证据回答: {type(exc).__name__}")
         if draft is None:
             lines = ["基于当前知识库，检索到以下可核验依据："]
             for index, row in enumerate(evidence, 1):
@@ -611,6 +628,7 @@ class LegalAgentWorkflow:
             ),
             "citations": citations,
             "llm_call_count": llm_calls,
+            "llm_usage_events": llm_usage_events,
             "generation_mode": mode,
             "warnings": warnings,
             "route": "verify",
@@ -640,6 +658,7 @@ class LegalAgentWorkflow:
             deterministic_issues.append("引用 ID 不属于当前证据")
         warnings = list(state["warnings"])
         llm_calls = state["llm_call_count"]
+        llm_usage_events = list(state["llm_usage_events"])
         validation = AnswerValidation(
             passed=not deterministic_issues,
             unsupported_claims=deterministic_issues,
@@ -666,11 +685,13 @@ class LegalAgentWorkflow:
                     AnswerValidation,
                     prompt,
                     timeout_seconds=self.settings.llm_timeout_seconds,
+                    node="verify_answer",
+                    usage_events=llm_usage_events,
                 )
                 llm_calls += 1
             except Exception as exc:
                 llm_calls += 1
-                warnings.append(f"LLM 蕴含检查失败，保留确定性校验结果: {type(exc).__name__}: {exc}")
+                warnings.append(f"LLM 蕴含检查失败，保留确定性校验结果: {type(exc).__name__}")
 
         feedback = [
             *validation.unsupported_claims,
@@ -705,6 +726,7 @@ class LegalAgentWorkflow:
             "validation_result": validation.model_dump(),
             "validation_feedback": feedback,
             "llm_call_count": llm_calls,
+            "llm_usage_events": llm_usage_events,
             "correction_count": correction_count,
             "warnings": warnings,
             "final_answer": final,

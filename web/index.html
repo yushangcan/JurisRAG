@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="基于政府采购与招投标法规知识库的可溯源问答系统">
+  <title>JurisRAG 法规问答</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="JurisRAG 首页">
+      <span class="brand-mark" aria-hidden="true">法</span>
+      <span>
+        <strong>JurisRAG</strong>
+        <small>政府采购与招投标法规知识库</small>
+      </span>
+    </a>
+    <div id="health-badge" class="health-badge is-checking" role="status">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="health-text">正在连接知识库</span>
+    </div>
+  </header>
+
+  <main>
+    <section class="query-section" aria-labelledby="page-title">
+      <div class="section-heading">
+        <p class="eyebrow">法规检索助手</p>
+        <h1 id="page-title">从法条原文中查找答案</h1>
+        <p>答案严格依据本地知识库生成，并附带可核验的法规名称、条号和官方来源。</p>
+      </div>
+
+      <form id="question-form" class="question-form">
+        <label for="question-input">请输入法规问题</label>
+        <textarea
+          id="question-input"
+          name="question"
+          rows="4"
+          maxlength="1000"
+          placeholder="例如：政府采购法第二十二条规定了哪些供应商条件？"
+          required
+        ></textarea>
+        <div class="form-toolbar">
+          <div class="query-controls">
+            <div class="top-k-control">
+              <label for="query-mode">执行模式</label>
+              <select id="query-mode" name="mode">
+                <option value="agent" selected>Agent RAG</option>
+                <option value="rag">固定 RAG</option>
+              </select>
+            </div>
+            <div class="top-k-control">
+              <label for="top-k">返回证据数</label>
+              <select id="top-k" name="top_k">
+                <option value="3" selected>3 条</option>
+                <option value="5">5 条</option>
+                <option value="8">8 条</option>
+                <option value="10">10 条</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-actions">
+            <button id="clear-button" class="button button-secondary" type="button">清空</button>
+            <button id="submit-button" class="button button-primary" type="submit">
+              <span class="button-label">检索并回答</span>
+              <span class="button-loader" aria-hidden="true"></span>
+            </button>
+          </div>
+        </div>
+      </form>
+
+      <div class="examples" aria-label="示例问题">
+        <span>试试这些问题</span>
+        <div class="example-list">
+          <button type="button" class="example-button">政府采购法第二十二条规定了哪些供应商条件？</button>
+          <button type="button" class="example-button">哪些情形可以采用单一来源采购？</button>
+          <button type="button" class="example-button">招标人可以限制外地供应商参加投标吗？</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="feedback-section" class="feedback-section" hidden aria-live="polite">
+      <div id="feedback-icon" class="feedback-icon" aria-hidden="true">!</div>
+      <div>
+        <h2 id="feedback-title">请求未完成</h2>
+        <p id="feedback-message"></p>
+      </div>
+    </section>
+
+    <section id="loading-section" class="loading-section" hidden aria-live="polite">
+      <div class="loading-line"></div>
+      <p id="loading-text">正在进行精确匹配、混合检索与重排，请稍候...</p>
+    </section>
+
+    <section id="result-section" class="result-section" hidden aria-labelledby="answer-title">
+      <div class="result-heading">
+        <div>
+          <p class="eyebrow">知识库回答</p>
+          <h2 id="answer-title">检索结果</h2>
+        </div>
+        <div id="result-meta" class="result-meta"></div>
+      </div>
+
+      <div id="answer-alert" class="answer-alert" hidden></div>
+      <div id="answer-content" class="answer-content"></div>
+      <p id="disclaimer" class="disclaimer"></p>
+
+      <div class="evidence-heading">
+        <div>
+          <p class="eyebrow">原文证据</p>
+          <h2>引用与溯源</h2>
+        </div>
+        <span id="citation-count" class="count-label"></span>
+      </div>
+      <div id="citation-list" class="citation-list"></div>
+
+      <details id="trace-panel" class="trace-panel">
+        <summary>查看检索过程</summary>
+        <div id="trace-content" class="trace-content"></div>
+      </details>
+    </section>
+  </main>
+
+  <footer>
+    <p>JurisRAG 仅提供法规检索辅助，不构成法律意见。请以官方最新文本为准。</p>
+    <a href="/docs">API 文档</a>
+  </footer>
+
+  <script src="/static/app.js" defer></script>
+</body>
+</html>

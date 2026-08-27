@@ -1,0 +1,21 @@
+# Secrets: only commit .env.example, never commit the real .env file.
+.env
+
+# Python virtual environments and generated cache files.
+.venv/
+.venv-eval/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# IDE and operating-system files.
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Generated RAG index and runtime output.
+data/index/
+data/models/
+logs/
+tmp/

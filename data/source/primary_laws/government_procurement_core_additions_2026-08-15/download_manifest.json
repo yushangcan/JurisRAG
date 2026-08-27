@@ -1,0 +1,230 @@
+{
+  "dataset_name": "government_procurement_core_additions_2026_08_15",
+  "document_count": 14,
+  "source_file_count": 17,
+  "collected_at": "2026-08-15",
+  "scope": "National-level government procurement core documents selected to fill the current corpus gaps.",
+  "collection_policy": "Only official public primary-source pages and their official attachments are retained. SHA-256 is recorded for every downloaded source file.",
+  "ingestion_status": "downloaded_not_yet_added_to_main_manifest_or_vector_index",
+  "documents": [
+    {
+      "title": "政府采购竞争性磋商采购方式管理暂行办法",
+      "document_number": "财库〔2014〕214号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201501/t20150121_4942852.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "01_competitive_consultation_measures.html",
+          "bytes": 38809,
+          "sha256": "6f944f43f572e9104d5cfd883f425652ff2e4661b6db9258c12b8081f6cfdf7c"
+        }
+      ]
+    },
+    {
+      "title": "关于政府采购竞争性磋商采购方式管理暂行办法有关问题的补充通知",
+      "document_number": "财库〔2015〕124号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201507/t20150709_5535094.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "02_competitive_consultation_supplement.html",
+          "bytes": 11952,
+          "sha256": "77c3d714eb26204359d841c7ee94f37f7bae959b2fb69ffed93f71099ad7c49f"
+        }
+      ]
+    },
+    {
+      "title": "政府采购评审专家管理办法",
+      "document_number": "财库〔2016〕198号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201702/t20170208_7908707.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "03_review_expert_management_measures.html",
+          "bytes": 29793,
+          "sha256": "34bab44e2f4e85546f46b2a616d2fe6b562e6e5de4ebd6816c7f8e8648a46368"
+        }
+      ]
+    },
+    {
+      "title": "财政部关于加强政府采购活动内部控制管理的指导意见",
+      "document_number": "财库〔2016〕99号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201607/t20160704_6992030.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "04_internal_control_guidance.html",
+          "bytes": 24341,
+          "sha256": "04c9ffbd8a71afde6d9640593b09c85136d36d6f3921a06180196df7558b0e5e"
+        }
+      ]
+    },
+    {
+      "title": "财政部关于在政府采购活动中查询及使用信用记录有关问题的通知",
+      "document_number": "财库〔2016〕125号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201608/t20160811_7169275.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "05_credit_records_notice.html",
+          "bytes": 16706,
+          "sha256": "12d844e3e5a4994d81bc74ed0c43fd259a5f9214a163865de8197e68b38f68e6"
+        }
+      ]
+    },
+    {
+      "title": "关于促进政府采购公平竞争优化营商环境的通知",
+      "document_number": "财库〔2019〕38号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/201908/t20190805_12605809.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "06_fair_competition_business_environment_notice.html",
+          "bytes": 20982,
+          "sha256": "0f326041ee64c6127539d0f9a853d654c3b699c680964b10df719b26ff585078"
+        }
+      ]
+    },
+    {
+      "title": "政府采购品目分类目录（2022年印发）",
+      "document_number": "财库〔2022〕31号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202209/t20220922_18696450.htm",
+      "source_files": [
+        {
+          "role": "official_notice_page",
+          "raw_file": "07_procurement_catalog_notice.html",
+          "bytes": 12083,
+          "sha256": "dcf0c3c2024908b9470fc9a04ad032599740de52dd311bfda0348f408442adb1"
+        },
+        {
+          "role": "official_catalog_attachment",
+          "raw_file": "07a_procurement_catalog_2022.pdf",
+          "source_url": "https://download.ccgp.gov.cn/2022/C79253288738399846917.pdf",
+          "bytes": 1104691,
+          "sha256": "d0e5f6f24d318ff4497403615f4ba83246b5bb29e056be1b77ae7427b29dbccd"
+        },
+        {
+          "role": "official_revision_comparison_attachment",
+          "raw_file": "07b_procurement_catalog_revision_comparison.pdf",
+          "source_url": "https://download.ccgp.gov.cn/2022/C61165725775637822536.pdf",
+          "bytes": 907958,
+          "sha256": "f2755f1ab0fd1f4823f60b5e70cfd914e17159d6e72d97a9c4dbb5dd54ebcdc9"
+        }
+      ]
+    },
+    {
+      "title": "政府采购进口产品管理办法",
+      "document_number": "财库〔2007〕119号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202204/t20220425_17820153.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "08_imported_products_management_measures.html",
+          "bytes": 80965,
+          "sha256": "ee9498a81eaca649477681b5f15b021167278c5faf0be6c57435ad5cdeac96bf"
+        }
+      ]
+    },
+    {
+      "title": "政府采购合作创新采购方式管理暂行办法",
+      "document_number": "财库〔2024〕13号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202404/t20240426_21937284.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "09_cooperative_innovation_procurement_measures.html",
+          "bytes": 97003,
+          "sha256": "8b75181ab856d729235efa4be67888e294b2f11abcddd2154f24117c9113f8ef"
+        }
+      ]
+    },
+    {
+      "title": "政府采购代理机构监督检查暂行办法",
+      "document_number": "财库〔2024〕27号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202412/t20241202_23762110.htm",
+      "source_files": [
+        {
+          "role": "official_notice_page",
+          "raw_file": "10_agency_supervision_notice.html",
+          "bytes": 12237,
+          "sha256": "65d27e0b04827304ce1ad5d7b1d2be89138675cb7b68da78fd3597cac74f9a49"
+        },
+        {
+          "role": "official_measures_attachment",
+          "raw_file": "10a_agency_supervision_measures.pdf",
+          "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202412/W020241202550749289202.pdf",
+          "bytes": 162971,
+          "sha256": "7b099dd4455b6dbe28d0de34e19f937d2700c0e969c6f420d62f1a54e467b92b"
+        }
+      ]
+    },
+    {
+      "title": "国务院办公厅关于在政府采购中实施本国产品标准及相关政策的通知",
+      "document_number": "国办发〔2025〕34号",
+      "source_portal": "中国政府网",
+      "source_url": "https://www.gov.cn/zhengce/content/202509/content_7042999.htm",
+      "effective_date": "2026-01-01",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "11_domestic_products_policy.html",
+          "bytes": 45578,
+          "sha256": "da903f52f10a70280753328e6c1a1f4fe8c5a2fed2b110b5d352eb2f9ccd3725"
+        }
+      ]
+    },
+    {
+      "title": "关于贯彻落实《国务院办公厅关于在政府采购中实施本国产品标准及相关政策的通知》的意见",
+      "document_number": "财库〔2025〕30号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202512/t20251219_25958481.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "12_domestic_products_implementation_opinion.html",
+          "bytes": 21029,
+          "sha256": "612c1ac37c0aa4c92983776e062319d35fa02efe4810cd46b55c9c5d5f3ec031"
+        }
+      ]
+    },
+    {
+      "title": "关于推动解决政府采购异常低价问题的通知",
+      "document_number": "财库〔2026〕2号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202601/t20260122_26102526.htm",
+      "effective_date": "2026-02-01",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "13_abnormally_low_price_notice.html",
+          "bytes": 25108,
+          "sha256": "ad9d05743f5cbeb6a63f13782adccbd3c106ce094086950d66dfe978679bea86"
+        }
+      ]
+    },
+    {
+      "title": "关于进一步加大政府采购支持中小企业力度的通知",
+      "document_number": "财库〔2022〕19号",
+      "source_portal": "中国政府采购网",
+      "source_url": "https://www.ccgp.gov.cn/zcfg/mof/202205/t20220531_17999872.htm",
+      "source_files": [
+        {
+          "role": "official_full_text_page",
+          "raw_file": "14_sme_support_notice.html",
+          "bytes": 15315,
+          "sha256": "75f186670ceba56db7db4e47d8276d69ae79976a52b615c170efcd99fe541490"
+        }
+      ]
+    }
+  ]
+}

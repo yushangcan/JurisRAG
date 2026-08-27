@@ -1,0 +1,3 @@
+# Install the business dependencies first, then the pinned evaluator.
+-r ../requirements.txt
+ragas==0.4.3

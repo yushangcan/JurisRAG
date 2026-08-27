@@ -1,0 +1,10 @@
+{"case_id":"missing_gpl_article_001","question":"《中华人民共和国政府采购法》第九十九条规定了什么？","should_answer":false,"category":"nonexistent_article","rationale":"知识库中的政府采购法止于第八十八条，不存在第九十九条。"}
+{"case_id":"missing_tender_article_002","question":"《中华人民共和国招标投标法》第一百二十条的处罚标准是什么？","should_answer":false,"category":"nonexistent_article","rationale":"知识库中的招标投标法不存在第一百二十条。"}
+{"case_id":"us_federal_rule_003","question":"美国联邦政府采购投诉必须在几天内提出？","should_answer":false,"category":"outside_jurisdiction","rationale":"当前语料范围是中国国家层级招标投标与政府采购文件。"}
+{"case_id":"eu_threshold_004","question":"欧盟公共采购2026年的服务项目门槛金额是多少欧元？","should_answer":false,"category":"outside_jurisdiction","rationale":"当前语料不包含欧盟公共采购法规。"}
+{"case_id":"shanghai_future_threshold_005","question":"2027年上海市政府采购公开招标限额标准是多少？","should_answer":false,"category":"missing_local_rule","rationale":"当前语料不包含2027年上海地方集中采购目录及限额标准。"}
+{"case_id":"beijing_future_catalog_006","question":"2028年北京市集中采购目录新增了哪些品目？","should_answer":false,"category":"missing_local_rule","rationale":"当前语料不包含2028年北京地方集中采购目录。"}
+{"case_id":"minimum_registered_capital_007","question":"供应商参加政府采购的注册资本最低必须达到多少万元？","should_answer":false,"category":"unsupported_numeric_premise","rationale":"现有国家层级语料没有规定统一的供应商最低注册资本金额。"}
+{"case_id":"tax_rate_008","question":"政府采购货物合同一律适用多少增值税税率？","should_answer":false,"category":"outside_corpus_fact","rationale":"当前语料不是税法库，不能据此给出统一增值税税率。"}
+{"case_id":"case_outcome_009","question":"某供应商昨天被财政局罚款，行政诉讼是否一定能胜诉？","should_answer":false,"category":"case_specific_prediction","rationale":"缺少案件事实且知识库不能预测个案诉讼结果。"}
+{"case_id":"validity_inventory_010","question":"截至2026年8月19日，知识库中的哪些文件已经全部废止？","should_answer":false,"category":"missing_validity_metadata","rationale":"当前索引未维护可支持完整废止清单的法规时效关系数据。"}

@@ -18,7 +18,7 @@ from agent.evidence import (
     merge_parent_results,
     select_parent_ids,
 )
-from agent.intent import deterministic_intent, intent_prompt
+from agent.intent import deterministic_intent, intent_prompt, is_safe_exact_reference_question
 from agent.mcp_client import MCPClientError, MCPConnectionError, LegalToolClient
 from agent.modeling import invoke_schema
 from agent.policy import AgentPolicyError, search_budget_exhausted, validate_action
@@ -49,6 +49,7 @@ class LegalAgentWorkflow:
         graph.add_node("check_coverage", self.check_coverage)
         graph.add_node("fetch_context", self.fetch_context)
         graph.add_node("generate_answer", self.generate_answer)
+        graph.add_node("exact_reference_answer", self.exact_reference_answer)
         graph.add_node("verify_answer", self.verify_answer)
         graph.add_node("safe_evidence_fallback", self.safe_evidence_fallback)
         graph.add_node("finalize", self.finalize)
@@ -78,14 +79,18 @@ class LegalAgentWorkflow:
                 "refuse": "refuse",
             },
         )
-        graph.add_edge("observe", "check_coverage")
+        graph.add_conditional_edges(
+            "observe", self.route, {"coverage": "check_coverage", "fetch": "fetch_context"}
+        )
         graph.add_conditional_edges(
             "check_coverage",
             self.route,
             {"select": "select_action", "fetch": "fetch_context", "refuse": "refuse", "baseline": "baseline_fallback"},
         )
         graph.add_conditional_edges(
-            "fetch_context", self.route, {"generate": "generate_answer", "refuse": "refuse"}
+            "fetch_context",
+            self.route,
+            {"generate": "generate_answer", "exact_answer": "exact_reference_answer", "refuse": "refuse"},
         )
         graph.add_conditional_edges(
             "generate_answer", self.route, {"verify": "verify_answer", "refuse": "refuse"}
@@ -102,6 +107,7 @@ class LegalAgentWorkflow:
             },
         )
         graph.add_edge("safe_evidence_fallback", "finalize")
+        graph.add_edge("exact_reference_answer", "finalize")
         graph.add_edge("finalize", END)
         graph.add_edge("refuse", END)
         graph.add_edge("baseline_fallback", END)
@@ -147,7 +153,15 @@ class LegalAgentWorkflow:
         warnings = list(state["warnings"])
         llm_calls = state["llm_call_count"]
         llm_usage_events = list(state["llm_usage_events"])
-        if self.model is not None and llm_calls < self.settings.max_llm_calls:
+        safe_exact_candidate = (
+            self.settings.exact_reference_fast_path
+            and is_safe_exact_reference_question(state["original_question"], fallback)
+        )
+        if (
+            not safe_exact_candidate
+            and self.model is not None
+            and llm_calls < self.settings.max_llm_calls
+        ):
             try:
                 analysis = await invoke_schema(
                     self.model,
@@ -356,6 +370,7 @@ class LegalAgentWorkflow:
                 "new_evidence_count": new_count,
             },
         ]
+        exact_fast_path = self._verified_exact_fast_path(state, action, result)
         return {
             "child_evidence": child,
             "scope_documents": scope,
@@ -368,15 +383,42 @@ class LegalAgentWorkflow:
             "action_history": history,
             "planned_action": None,
             "last_tool_result": None,
-            "route": "coverage",
+            "exact_fast_path": exact_fast_path,
+            "route": "fetch" if exact_fast_path else "coverage",
             "public_trace": self._trace(
                 state,
                 "evidence_observed",
                 new_evidence_count=new_count,
                 total_child_evidence=len(child),
                 no_progress_rounds=no_progress,
+                exact_fast_path=exact_fast_path,
             ),
         }
+
+    def _verified_exact_fast_path(
+        self,
+        state: LegalAgentState,
+        action: dict[str, Any],
+        result: dict[str, Any],
+    ) -> bool:
+        """在工具返回后复核快速路径，防止近似匹配或复杂问题绕过验证。"""
+
+        if not self.settings.exact_reference_fast_path:
+            return False
+        analysis = deterministic_intent(state["original_question"])
+        if not is_safe_exact_reference_question(state["original_question"], analysis):
+            return False
+        if action.get("tool_name") != "exact_legal_search" or result.get("count", 0) < 1:
+            return False
+        required = set(result.get("required_matches", []))
+        if not {"document_title", "article_number"}.issubset(required):
+            return False
+        # MCP 精确工具会执行法规标题等值检查；这里再要求每条证据都声明两个精确
+        # 匹配信号。任一候选不满足就回到完整覆盖检查，采取失败关闭策略。
+        return all(
+            {"document_title", "article_number"}.issubset(set(row.get("exact_matches", [])))
+            for row in result.get("results", [])
+        )
 
     async def check_coverage(self, state: LegalAgentState) -> dict[str, Any]:
         if not state["child_evidence"]:
@@ -522,16 +564,62 @@ class LegalAgentWorkflow:
         except MCPClientError as exc:
             parents = state["parent_evidence"]
             warnings.append(f"父块回填失败，回答将使用 child 证据: {type(exc).__name__}: {exc}")
+        next_route = (
+            "exact_answer"
+            if state.get("exact_fast_path") and not self.settings.exact_fast_path_use_llm
+            else "generate"
+        )
         return {
             "parent_evidence": parents,
             "tool_call_count": calls,
             "warnings": warnings,
-            "route": "generate",
+            "route": next_route,
             "public_trace": self._trace(
                 state,
                 "parent_context_fetched",
                 requested=len(parent_ids),
                 returned=len(parents),
+            ),
+        }
+
+    def exact_reference_answer(self, state: LegalAgentState) -> dict[str, Any]:
+        """对精确条号查询返回可追溯原文，不让模型生成额外法律结论。"""
+
+        evidence = answer_evidence(
+            state["parent_evidence"], state["child_evidence"], self.settings.max_parent_evidence
+        )
+        if not evidence:
+            return {"route": "refuse", "stop_reason": "knowledge_base_gap"}
+        selected = evidence[: self.settings.max_citations]
+        lines = ["精确检索到以下法规原文："]
+        citations: list[dict[str, Any]] = []
+        for index, row in enumerate(selected, 1):
+            metadata = row.get("metadata", {})
+            title = metadata.get("title", row.get("title", "未命名法规"))
+            article = metadata.get("article_number", row.get("article_number", ""))
+            lines.append(f"{index}. 《{title}》{article}：{row.get('text', '')}")
+            citations.append(citation_from_evidence(row, state["legal_issues"]))
+        lines.append("以上仅为指定法条原文展示；如需判断具体行为是否合法，应补充事实后走完整法律检索。")
+        return {
+            "draft_answer": "\n".join(lines),
+            "final_answer": "\n".join(lines),
+            "draft_citation_ids": [evidence_id(row) for row in selected],
+            "citations": citations,
+            "answerability": "direct",
+            "insufficient_evidence": False,
+            "generation_mode": "agent_exact_reference_fast_path",
+            "route": "finish",
+            "stop_reason": "exact_reference_fast_path_complete",
+            "validation_result": {
+                "passed": True,
+                "method": "exact_match_and_citation_contract",
+                "llm_used": False,
+            },
+            "public_trace": self._trace(
+                state,
+                "exact_reference_answered",
+                citation_count=len(citations),
+                llm_used=False,
             ),
         }
 

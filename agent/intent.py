@@ -11,6 +11,44 @@ from online_retrieval.retriever import ARTICLE_PATTERN, DOCUMENT_NUMBER_PATTERN,
 GOVERNMENT_SIGNALS = ("政府采购", "供应商", "采购人", "财政部门", "采购代理机构")
 CONSTRUCTION_SIGNALS = ("工程建设", "施工", "勘察", "设计招标", "监理", "工程项目")
 
+# 这些表达要求模型结合多条规则判断法律后果，不能被“出现了法规名和条号”误导到
+# 原文快速路径。列表宁可保守一些：漏走快速路径只影响速度，误走则可能影响结论。
+LEGAL_JUDGMENT_MARKERS = (
+    "合法",
+    "违法",
+    "合规",
+    "能否",
+    "可以否决",
+    "是否有效",
+    "有效吗",
+    "合理吗",
+    "如何处理",
+    "怎么办",
+    "责任",
+    "处罚",
+    "救济",
+    "投诉",
+    "质疑",
+)
+
+
+def is_safe_exact_reference_question(question: str, analysis: IntentAnalysis) -> bool:
+    """判断问题是否只是“明确法规 + 明确条号”的低风险原文查询。
+
+    快速路径必须同时满足：只有一个正式引用、法规名和条号都存在、不含评价/后果
+    表达。最终是否进入快速路径还要等精确工具返回等值命中结果后再次确认。
+    """
+
+    references = analysis.exact_references
+    return (
+        analysis.primary_intent == "exact_reference"
+        and len(references) == 1
+        and bool(references[0].document_title.strip())
+        and bool(references[0].article_number.strip())
+        and not any(marker in question for marker in LEGAL_JUDGMENT_MARKERS)
+        and not any(marker in question for marker in ("以及", "同时", "分别", "比较"))
+    )
+
 
 def deterministic_intent(question: str) -> IntentAnalysis:
     """模型不可用时仍能给出保守、可解释的意图和首轮查询。"""
@@ -53,10 +91,7 @@ def deterministic_intent(question: str) -> IntentAnalysis:
         domain = "uncertain"
         domain_signals = [*government, *construction]
 
-    legality = any(
-        marker in question
-        for marker in ("合法", "违法", "合规", "能否否决", "可以否决", "有效吗", "合理吗")
-    )
+    legality = any(marker in question for marker in LEGAL_JUDGMENT_MARKERS)
     procedure = any(marker in question for marker in ("流程", "程序", "期限", "如何办理", "怎么做"))
     scope = any(marker in question for marker in ("是否适用", "适用范围", "效力", "废止", "现行有效"))
     legal_markers = (

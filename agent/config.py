@@ -16,6 +16,15 @@ def _positive_int(name: str, default: int) -> int:
     return value
 
 
+def _boolean(name: str, default: bool) -> bool:
+    """只接受常见布尔写法，避免拼写错误悄悄改变安全路径。"""
+
+    raw = os.getenv(name, str(default)).strip().lower()
+    if raw not in {"true", "false"}:
+        raise ValueError(f"{name} 只能是 true 或 false")
+    return raw == "true"
+
+
 @dataclass(frozen=True)
 class AgentSettings:
     """一次 Agent 请求使用的预算；冻结后节点不能在运行时偷偷改参数。"""
@@ -42,6 +51,8 @@ class AgentSettings:
     tool_top_k: int
     max_question_chars: int
     max_concurrent_requests: int
+    exact_reference_fast_path: bool
+    exact_fast_path_use_llm: bool
 
 
 def get_agent_settings() -> AgentSettings:
@@ -78,6 +89,10 @@ def get_agent_settings() -> AgentSettings:
         tool_top_k=_positive_int("AGENT_TOOL_TOP_K", 5),
         max_question_chars=_positive_int("AGENT_MAX_QUESTION_CHARS", 2000),
         max_concurrent_requests=_positive_int("AGENT_MAX_CONCURRENT_REQUESTS", 2),
+        # 快速路径默认只返回精确命中的法规原文，不生成法律评价。它仍经过 MCP
+        # 工具白名单、parent 回填、引用构造和最终响应契约。
+        exact_reference_fast_path=_boolean("AGENT_EXACT_REFERENCE_FAST_PATH", True),
+        exact_fast_path_use_llm=_boolean("AGENT_EXACT_FAST_PATH_USE_LLM", False),
     )
     if not settings.mcp_server_url.startswith(("http://", "https://")):
         raise ValueError("MCP_SERVER_URL 必须是 http/https 地址")

@@ -1,6 +1,6 @@
 """意图、领域和口语术语的确定性降级测试。"""
 
-from agent.intent import deterministic_intent
+from agent.intent import deterministic_intent, is_safe_exact_reference_question
 from agent.schemas import IntentAnalysis
 
 
@@ -10,6 +10,13 @@ def test_unbracketed_law_and_article_are_preserved() -> None:
     assert analysis.domain == "government_procurement"
     assert analysis.exact_references[0].document_title == "政府采购法"
     assert analysis.exact_references[0].article_number == "第二十二条"
+    assert is_safe_exact_reference_question("政府采购法第二十二条规定了哪些条件？", analysis)
+
+
+def test_legal_judgment_with_reference_never_uses_exact_fast_path() -> None:
+    question = "政府采购法第二十二条能否证明超过150页就可以否决，合法吗？"
+    analysis = deterministic_intent(question)
+    assert is_safe_exact_reference_question(question, analysis) is False
 
 
 def test_tender_words_alone_do_not_force_a_domain() -> None:

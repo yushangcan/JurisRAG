@@ -72,6 +72,24 @@ class FakeMCPClient:
         return {"tool": name, "count": 1, "results": [CHILD]}
 
 
+class ExactFastPathMCPClient(FakeMCPClient):
+    """返回真实精确工具会提供的双重匹配声明，用于验证低成本路径。"""
+
+    async def call_tool(self, name: str, arguments: dict) -> dict:
+        self.calls.append(name)
+        if name == "exact_legal_search":
+            child = {**CHILD, "exact_matches": ["document_title", "article_number"]}
+            return {
+                "tool": name,
+                "count": 1,
+                "required_matches": ["document_title", "article_number"],
+                "results": [child],
+            }
+        if name == "fetch_parent_context":
+            return {"tool": name, "count": 1, "results": [PARENT], "missing_ids": []}
+        raise AssertionError(f"快速路径不应调用 {name}")
+
+
 def test_graph_completes_exact_query_with_traceable_parent() -> None:
     async def scenario() -> None:
         settings = get_agent_settings()
@@ -90,6 +108,30 @@ def test_graph_completes_exact_query_with_traceable_parent() -> None:
             "check_issue_coverage",
             "fetch_parent_context",
         ]
+        assert state["citations"][0]["parent_id"] == "law-article-22"
+
+    anyio.run(scenario)
+
+
+def test_exact_reference_fast_path_skips_llm_and_coverage() -> None:
+    """安全原文查询只调用精确检索和 parent 回填，不调用覆盖模型或回答模型。"""
+
+    class MustNotRunModel:
+        async def ainvoke(self, _prompt: str):
+            raise AssertionError("精确原文快速路径不应调用模型")
+
+    async def scenario() -> None:
+        settings = get_agent_settings()
+        client = ExactFastPathMCPClient()
+        workflow = LegalAgentWorkflow(client, MustNotRunModel(), settings)
+        state = await workflow.graph.ainvoke(
+            initial_agent_state("《中华人民共和国政府采购法》第二十二条规定什么？", 3, settings),
+            {"recursion_limit": 40},
+        )
+        assert client.calls == ["exact_legal_search", "fetch_parent_context"]
+        assert state["llm_call_count"] == 0
+        assert state["generation_mode"] == "agent_exact_reference_fast_path"
+        assert state["stop_reason"] == "exact_reference_fast_path_complete"
         assert state["citations"][0]["parent_id"] == "law-article-22"
 
     anyio.run(scenario)

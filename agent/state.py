@@ -61,6 +61,7 @@ class LegalAgentState(TypedDict, total=False):
     generation_mode: str
     insufficient_evidence: bool
     use_baseline_fallback: bool
+    exact_fast_path: bool
     warnings: list[str]
     public_trace: list[dict[str, Any]]
 
@@ -123,6 +124,7 @@ def initial_agent_state(
         "generation_mode": "agent",
         "insufficient_evidence": False,
         "use_baseline_fallback": False,
+        "exact_fast_path": False,
         "warnings": [],
         "public_trace": [
             {

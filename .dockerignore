@@ -1,0 +1,14 @@
+.git
+.github
+.idea
+.vscode
+.venv
+.venv-eval
+__pycache__
+*.py[cod]
+.pytest_cache
+.env
+data/index
+data/models
+logs
+tmp

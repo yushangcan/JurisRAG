@@ -1,0 +1,37 @@
+services:
+  mcp:
+    build:
+      context: .
+    command: ["python", "run_mcp.py", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8001"]
+    env_file:
+      - .env
+    volumes:
+      - ./data/index:/app/data/index
+      - ./data/models:/app/data/models:ro
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      # 容器内不能使用宿主机的 127.0.0.1，通过 Compose 服务名访问 MCP。
+      MCP_SERVER_URL: http://mcp:8001/mcp
+    volumes:
+      - ./data/index:/app/data/index
+      - ./data/models:/app/data/models:ro
+    ports:
+      - "8000:8000"
+    depends_on:
+      - mcp
+    healthcheck:
+      # /live 只检查进程；依赖完整度由 /ready 单独展示，避免依赖短暂异常反复重启。
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/live', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped

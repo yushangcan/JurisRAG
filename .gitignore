@@ -1,5 +1,7 @@
 # Secrets: only commit .env.example, never commit the real .env file.
 .env
+.env.*
+!.env.example
 
 # Python virtual environments and generated cache files.
 .venv/
@@ -7,6 +9,10 @@
 __pycache__/
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # IDE and operating-system files.
 .idea/

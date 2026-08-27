@@ -1,0 +1,17 @@
+# 统一仓库文本换行，避免 Windows/Linux 协作时整个文件看起来都被修改。
+* text=auto
+*.py text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+*.html text eol=lf
+*.css text eol=lf
+*.js text eol=lf
+
+# 原始法规文件属于二进制制品，不执行换行转换或文本差异比较。
+*.pdf binary
+*.docx binary
+*.png binary
+*.jpg binary
+*.jpeg binary

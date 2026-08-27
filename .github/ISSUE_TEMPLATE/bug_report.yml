@@ -1,0 +1,55 @@
+name: Bug 报告
+description: 报告可复现的检索、Agent、接口或部署问题
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: 请删除 API Key、用户隐私和未公开业务材料后再提交。
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 实际现象
+      description: 包含错误类型、HTTP 状态码和已脱敏 request_id，不要粘贴密钥。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: 最小复现步骤
+      placeholder: |
+        1. 使用的命令或接口
+        2. 脱敏输入
+        3. 得到的结果
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA
+      description: 运行 `git rev-parse HEAD` 获取。
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: 运行方式
+      options:
+        - 本地 Python
+        - Docker Compose
+        - GitHub Actions
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: 安全确认
+      options:
+        - label: 我已经删除密钥、个人信息和敏感业务文本。
+          required: true

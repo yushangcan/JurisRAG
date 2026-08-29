@@ -4,10 +4,11 @@ JurisRAG 是一个面向政府采购、工程招投标法规的可运行 Agentic
 
 这是一个用于学习、面试展示和内部检索实验的工程项目，不是法律意见系统。法规可能修订、废止或存在适用范围差异，任何实际业务结论都必须回到官方最新文本复核。
 
-当前工程状态（2026-08-29）：代码已使用 Git 管理，`main` 保存稳定基线，优化在 `feat/observability-and-github-delivery` 分支按功能拆成独立 commit；发布清理后 44 项自动化测试通过。仓库尚未配置 GitHub remote，也尚未在 GitHub Actions 上实际运行，不能把本地验证写成远程 CI 已通过。
+当前工程状态（2026-08-29）：代码已使用 Git 管理，`main` 保存稳定基线，优化在 `feat/observability-and-github-delivery` 分支按功能拆成独立 commit；发布清理后 44 项自动化测试通过。项目已上传至私有 GitHub 仓库 [yushangcan/JurisRAG](https://github.com/yushangcan/JurisRAG)，GitHub Actions 已在提交 `41bc362` 上完成干净 checkout、轻量索引重建和完整测试。
 
 面试与优化说明：
 
+- [项目设计与实现说明](docs/项目设计与实现说明.md)：从系统目标、总体分层、离线入库、在线检索、MCP、Agent、接口、评测到当前边界，自顶向下介绍完整项目。
 - [简历项目描述（STAR 法则）](docs/简历项目描述_STAR.md)：提供可直接用于简历的项目描述、面试展开方式和标注全部优化节点的架构图。
 - [RAG 全部优化记录](docs/RAG优化全记录.md)：逐项记录初始问题、修改措施、真实评测结果、代价和证据边界。
 - [受约束法律检索 Agent 详细开发计划](docs/Agent架构详细开发计划.md)：从意图识别、MCP 工具路由、循环约束、证据验证、有限纠错到 A/B 评测的逐阶段实施方案。
@@ -368,7 +369,7 @@ git diff --check
 git diff --cached
 ```
 
-`.gitignore`、`.dockerignore` 和 CI 都会排除 `.env`、模型、Chroma 索引、日志和临时评测输出。`.github/workflows/ci.yml` 不调用付费模型，而是用 Hash Embedding、关闭 Reranker、从已提交 Markdown 创建临时索引后运行完整测试。该流程已在本地以相同环境变量验证；只有推送 GitHub 并出现成功的工作流记录后，才能称为“GitHub Actions CI 通过”。
+`.gitignore`、`.dockerignore` 和 CI 都会排除 `.env`、模型、Chroma 索引、日志和临时评测输出。`.github/workflows/ci.yml` 不调用付费模型，而是用 Hash Embedding、关闭 Reranker、从已提交 Markdown 创建临时索引后运行完整测试。2026-08-29 的 [GitHub Actions 运行](https://github.com/yushangcan/JurisRAG/actions/runs/33257038942) 已在提交 `41bc362` 上通过。
 
 本地已有模型和索引时可使用：
 
@@ -381,15 +382,14 @@ API 为 `http://127.0.0.1:8000`，MCP 为 `http://127.0.0.1:8001/mcp`。镜像�
 
 协作和安全规则分别见 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 与 [DATA_NOTICE.md](DATA_NOTICE.md)。软件代码使用 MIT License；第三方法规文件不由 MIT License 再授权。
 
-创建空的 GitHub 仓库后再执行以下命令；`<你的仓库URL>` 必须替换为真实地址，本项目目前没有擅自配置远程仓库：
+本项目已经配置 `origin=https://github.com/yushangcan/JurisRAG.git`。其他贡献者首次克隆可执行：
 
 ```powershell
-git remote add origin <你的仓库URL>
-git push -u origin main
-git push -u origin feat/observability-and-github-delivery
+git clone https://github.com/yushangcan/JurisRAG.git
+cd JurisRAG
 ```
 
-建议先在 GitHub 对功能分支发起 Pull Request，等待 Actions 真实通过后再合并 `main`，不要在本地把未远程验证的工作流描述成成功。
+后续功能仍建议使用短期分支和 Pull Request，等待 Actions 通过后再合并 `main`。
 
 ## 13. 评测
 

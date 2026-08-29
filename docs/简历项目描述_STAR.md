@@ -25,6 +25,8 @@ Python、FastAPI、LangGraph、MCP、Chroma、BGE-small-zh-v1.5、BGE Reranker�
 - 建立 50 道有答案题、10 道无答案题的可复现评测流程，覆盖 Recall@K、MRR、RAGAS Context 指标、拒答行为和检索延迟；通过 FastAPI 返回回答、引用、命中 child、回填 parent 和完整 retrieval trace。
 - 使用 MCP 将精确、BM25、语义、HyDE、多查询、parent 和争点覆盖封装为九个结构化只读工具；基于 LangGraph 实现意图/领域/术语/争点识别、动态工具选择、三轮/八次工具预算、重复动作拦截、回答双重校验和固定 RAG 降级。该能力已完成真实单题闭环，但尚未完成冻结 A/B，因此不声明 Agent 带来量化准确率提升。
 - 增加分层超时、MCP有限重连与连续失败熔断、进程内并发舱壁、structuredContent/最终响应契约、存活/就绪检查和请求ID追踪；新增11项故障测试验证失败关闭。该实现属于单进程可靠性保护，未做并发压测，不写QPS或99.9%可用性。
+- 为 LangGraph 直接模型节点增加 provider/model、供应商 Token、耗时和失败类型观测，未返回 Token 时保持空值且不记录 prompt；为严格的“法规名+条号”原文题增加双重等值校验快速路径，可控测试中缩短为2次MCP、0次模型调用，真实延迟收益待同题 A/B。
+- 使用 Git 管理稳定基线和功能分支，按能力拆分可回退 commit；配置 GitHub Actions 在无密钥、无本地模型条件下重建轻量索引并运行测试，并通过 Docker Compose 拆分 API/MCP、挂载模型和索引。当前完成本地 CI 等价验证与 Compose 解析；首次镜像构建受 Docker Hub 下载速度阻塞，尚未推送远程和完成容器端到端验收。
 
 ## 二、STAR 法则详细讲述
 
@@ -101,7 +103,7 @@ Python、FastAPI、LangGraph、MCP、Chroma、BGE-small-zh-v1.5、BGE Reranker�
 | 50 道有答案开发集 | Recall@1 0.62，Recall@3 0.85，Recall@5 0.95，MRR@5 0.753 |
 | 有答案错误拒答 | 0/50 |
 | 10 道无答案开发集 | 正确拒答 10/10，不安全回答 0 |
-| 自动化测试 | 38 passed |
+| 自动化测试 | 44 passed |
 | Agent 精确法条在线闭环 | 1轮、3次MCP、4次可计数模型调用、55.87秒 |
 | Agent 复杂合法性问题回归 | “150页否决”2轮、`agent_llm`、2个parent引用、81.24秒；仅作条件式回答 |
 
@@ -123,6 +125,8 @@ Python、FastAPI、LangGraph、MCP、Chroma、BGE-small-zh-v1.5、BGE Reranker�
 - 最终50道有答案题没有触发二次多路召回，因此不能声称 HyDE 提升了这组题的 Recall；它在当前版本中主要是证据不足时的补救路径。
 - 最终回答可以在未配置 LLM 时退化为原文证据式回答；启用 LLM 后也只能使用证据门放行的内容。
 - Agent 已完成 MCP 协议调用和状态图约束，但完整冻结 A/B 尚未运行，不能写“Agent 提升准确率”。
+- 精确法条快速路径已由可控状态图测试证明减少为2次MCP、0次模型调用，但尚无真实环境延迟A/B，不能写具体加速百分比。
+- 已配置 GitHub Actions 和 Docker Compose，但远程仓库尚未创建/推送、容器尚未端到端启动，不能写“已上线”或“CI云端通过”。
 - 系统没有自动保证法规当前有效，涉及真实业务时仍需核对官方最新文本。
 
 ## 四、项目架构图（节点内标注对应优化）
@@ -140,6 +144,8 @@ flowchart TD
 
     Q["用户问题<br/>优化 O13: 法规名 条号 文号信号提取<br/>优化 O31: 2000字输入边界与请求ID"]
     AG["LangGraph受约束Agent<br/>优化 O32: 意图 领域 术语 争点<br/>3轮 8次MCP 7次LLM 2次纠正"]
+    FP{"精确原文安全门<br/>优化 O37: 法规名+条号双重等值<br/>排除合法性 后果 多争点"}
+    FAST["低成本原文路径<br/>优化 O37: exact + parent + citation<br/>可控测试2次MCP 0次LLM"]
     MCP["MCP工具与策略层<br/>优化 O33: 9个只读工具 Schema白名单<br/>重复签名拦截与structuredContent验证"]
     I["初次混合召回<br/>优化 O14: 精确匹配 + BM25 + BGE向量<br/>优化 O15: top_k乘8候选扩展"]
     J["RRF 融合<br/>优化 O16: k=60的多通道排名融合"]
@@ -151,17 +157,21 @@ flowchart TD
     P["安全拒答<br/>优化 O25: 证据仍不足时<br/>在调用最终模型前终止"]
     R["FastAPI 服务层<br/>优化 O26: health与questions接口<br/>优化 O27: 离线无LLM降级"]
     HA["单进程可靠性层<br/>优化 O35: 分层超时 并发舱壁<br/>MCP重连 熔断 半开恢复<br/>live ready 降级健康检查"]
+    OBS["可观测性<br/>优化 O36: 节点模型 Token 耗时 成败<br/>缺失Token保留null 不记录prompt"]
+    CICD["工程交付<br/>优化 O38/O39: Git分支与可回退commit<br/>GitHub CI轻量重建 Docker Compose"]
     BASE["固定Adaptive RAG<br/>Agent或MCP故障时显式降级<br/>保留A/B基线"]
     T["评测层<br/>优化 O28: 50题有答案集<br/>优化 O29: 10题无答案集<br/>优化 O30: Recall MRR RAGAS 延迟"]
 
     A --> B --> C --> D
     D --> E --> F --> G
     D --> H
-    Q --> AG --> MCP --> I
+    Q --> AG --> FP
+    FP -- "安全原文题" --> FAST --> N
+    FP -- "评价/复杂问题" --> MCP --> I
     G --> I --> J --> K --> L
     L -- "证据不足" --> M --> J
     L -- "证据充分" --> N
-    H --> N --> O --> HA --> R
+    H --> N --> O --> OBS --> HA --> R --> CICD
     L -- "二次召回仍不足" --> P --> HA
     MCP -- "连接故障或熔断" --> BASE --> HA
     T -. "离线评测与阈值验证" .-> I

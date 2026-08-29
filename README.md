@@ -4,6 +4,8 @@ JurisRAG 是一个面向政府采购、工程招投标法规的可运行 Agentic
 
 这是一个用于学习、面试展示和内部检索实验的工程项目，不是法律意见系统。法规可能修订、废止或存在适用范围差异，任何实际业务结论都必须回到官方最新文本复核。
 
+当前工程状态（2026-08-27）：代码已使用 Git 管理，`main` 保存稳定基线，优化在 `feat/observability-and-github-delivery` 分支按功能拆成独立 commit；44 项自动化测试通过。仓库尚未配置 GitHub remote，也尚未在 GitHub Actions 上实际运行，不能把本地验证写成远程 CI 已通过。
+
 面试与优化说明：
 
 - [简历项目描述（STAR 法则）](docs/简历项目描述_STAR.md)：提供可直接用于简历的项目描述、面试展开方式和标注全部优化节点的架构图。
@@ -14,7 +16,7 @@ JurisRAG 是一个面向政府采购、工程招投标法规的可运行 Agentic
 
 本目录只保留运行所需的实现代码、评测代码、原始法规、结构化 Markdown 和 Chroma 数据库；没有复制虚拟环境、IDE 配置、临时目录、评测大结果文件或模型缓存。
 
-当前随项目提供的数据库已经可以直接读取：
+当前本地工作区的数据库已经可以直接读取；`data/index/` 不提交 GitHub，其他人克隆后应按离线流程重建：
 
 | 内容 | 数量 | 说明 |
 | --- | ---: | --- |
@@ -43,6 +45,10 @@ flowchart LR
     Q --> A2[LangGraph 受约束 Agent]
     A2 --> A4[意图/领域/术语/争点]
     A4 --> A3[MCP 只读工具层]
+    A4 --> FP{安全的精确原文查询?}
+    FP -- 是 --> FPA[精确等值命中 + parent 回填<br/>确定性引用契约，不调用 LLM]
+    FPA --> W
+    FP -- 否 --> A3
     A3 --> I
     A3 --> J
     A3 --> K
@@ -101,11 +107,11 @@ JurisRAG/
 
 ## 4. 环境准备
 
-建议使用 Python 3.14（本次迁移验证版本），Windows PowerShell 在项目根目录执行：
+建议使用 CI 固定的 Python 3.12；当前 Windows 工作区也已在 Python 3.14 验证。Windows PowerShell 在项目根目录执行：
 
 ```powershell
 cd 'D:\面试面经\项目\JurisRAG'
-py -3.14 -m venv .venv
+py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
@@ -253,6 +259,8 @@ Agent 状态图依次执行：输入校验 → 意图/领域/术语/争点识别
 - 直接/条件式回答必须有不重复的可追溯引用，证据不足拒答不得携带伪支持引用；出站契约不一致时改为安全拒答；
 - 每个 HTTP 响应返回 `X-Request-ID` 和 `X-Process-Time-Ms`，日志不记录问题正文、密钥或 Authorization Header；
 - Web 只展示公开决策摘要、工具和状态变化，不展示隐藏思维链。
+- 对“明确法规名 + 明确条号 + 无法律评价”的单一原文查询启用严格快速路径，只执行精确检索和 parent 回填；出现“合法吗、能否、是否有效、责任、救济”等表达时强制走完整 Agent。
+- `agent_trace.llm_usage` 按节点记录模型名、供应商返回的 Token、耗时和成功/失败；供应商不返回 Token 时保留 `null`，且不记录 prompt、回复正文或密钥。
 
 这些是当前单进程可验证的可靠性措施，不等同于分布式高可用。多实例部署仍需要反向代理/网关、进程守护、全局限流、共享指标与告警；当前项目没有虚构 Kubernetes、Redis 或自动故障转移能力。
 
@@ -343,10 +351,47 @@ Agent 状态图依次执行：输入校验 → 意图/领域/术语/争点识别
 | `AGENT_TOOL_TOP_K` | `5` | Agent 单工具默认 Top-K，第一版最多 10。 |
 | `AGENT_MAX_CONCURRENT_REQUESTS` | `2` | 单 API 进程同时运行的 Agent 请求数。 |
 | `AGENT_MAX_QUESTION_CHARS` | `2000` | 用户问题最大字符数。 |
+| `AGENT_EXACT_REFERENCE_FAST_PATH` | `true` | 是否允许严格的法规名+条号原文快速路径；不处理合法性评价。 |
+| `AGENT_EXACT_FAST_PATH_USE_LLM` | `false` | 快速路径是否再进入生成模型；默认关闭，直接返回可追溯原文。 |
 
 修改 Embedding 模型、向量维度或集合版本后必须重新建库；不要把不同维度的向量写入同一 Chroma collection。
 
-## 12. 评测
+## 12. Git、CI 与容器交付
+
+项目采用 `main` 稳定基线加短期功能分支。推荐提交前执行：
+
+```powershell
+git status
+git diff --check
+.\.venv\Scripts\python.exe -m pytest -q
+.\.venv\Scripts\python.exe -m pip check
+git diff --cached
+```
+
+`.gitignore`、`.dockerignore` 和 CI 都会排除 `.env`、模型、Chroma 索引、日志和临时评测输出。`.github/workflows/ci.yml` 不调用付费模型，而是用 Hash Embedding、关闭 Reranker、从已提交 Markdown 创建临时索引后运行完整测试。该流程已在本地以相同环境变量验证；只有推送 GitHub 并出现成功的工作流记录后，才能称为“GitHub Actions CI 通过”。
+
+本地已有模型和索引时可使用：
+
+```powershell
+docker compose config
+docker compose up --build
+```
+
+API 为 `http://127.0.0.1:8000`，MCP 为 `http://127.0.0.1:8001/mcp`。镜像不包含模型和索引，Compose 通过 volume 挂载 `data/models` 与 `data/index`；真实 `.env` 只在运行时注入。当前 Compose 配置解析通过；2026-08-27 的首次镜像构建在下载 Dockerfile 前端层时因 Docker Hub 速度过慢被人工中止，尚未进入项目依赖安装，因此容器端到端启动仍待网络恢复后验收。
+
+协作和安全规则分别见 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 与 [DATA_NOTICE.md](DATA_NOTICE.md)。软件代码使用 MIT License；第三方法规文件不由 MIT License 再授权。
+
+创建空的 GitHub 仓库后再执行以下命令；`<你的仓库URL>` 必须替换为真实地址，本项目目前没有擅自配置远程仓库：
+
+```powershell
+git remote add origin <你的仓库URL>
+git push -u origin main
+git push -u origin feat/observability-and-github-delivery
+```
+
+建议先在 GitHub 对功能分支发起 Pull Request，等待 Actions 真实通过后再合并 `main`，不要在本地把未远程验证的工作流描述成成功。
+
+## 13. 评测
 
 先审计 gold 数据与当前来源：
 
@@ -404,7 +449,7 @@ Agent 新增 10 题工程冒烟集，检查领域、可回答性、首个工具�
 
 评测集是开发集，不能代替时间切分、法规版本切分、人工法律审核和线上监控。建议后续增加：废止/修订版本测试、跨法规冲突测试、页码溯源准确率、拒答安全率、延迟和模型下载失败降级测试。
 
-## 13. 常见问题
+## 14. 常见问题
 
 **为什么不能直接把 HTML 当作最终知识？** HTML 是原始来源格式，网页标签、导航和附件关系不适合直接检索。项目先保留 HTML 原文件，再生成带 front matter 和结构标题的 Markdown；原文 SHA-256 让每个 chunk 可以回到确切文件。
 
@@ -414,6 +459,6 @@ Agent 新增 10 题工程冒烟集，检查领域、可回答性、首个工具�
 
 **为什么 `.gitignore` 忽略 `data/models` 和 `data/index`？** 模型和索引通常体积较大，面试项目可以保留本地运行副本，但不适合直接提交到普通 Git 远程。若需要交付完整离线包，请把这两个目录单独压缩或使用 Git LFS，并同时保留 README 中的版本和校验说明。
 
-## 14. 法律与数据免责声明
+## 15. 法律与数据免责声明
 
 本项目仅用于信息检索和工程学习。数据文件中的来源网址、发布日期、法律状态和 SHA-256 只描述本次收集到的文件，不保证当前仍然有效。涉及招标采购资格、程序期限、投诉救济、处罚责任或合同争议时，应核对国家法律法规数据库、中国政府采购网、国家发展改革委等官方最新记录，并由有资质的专业人员作出判断。

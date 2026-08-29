@@ -404,7 +404,7 @@ git push -u origin feat/observability-and-github-delivery
 ```powershell
 .\.venv\Scripts\python.exe -m evaluation.run_retrieval_eval `
   --dataset evaluation/datasets/legal_rag_gold_v2.jsonl `
-  --output evaluation/retrieval_result.json `
+  --output evaluation/results/retrieval_latest.json `
   --top-k 5
 ```
 
@@ -413,7 +413,7 @@ git push -u origin feat/observability-and-github-delivery
 ```powershell
 .\.venv\Scripts\python.exe -m evaluation.run_abstention_eval `
   --dataset evaluation/datasets/legal_rag_unanswerable_v1.jsonl `
-  --output evaluation/abstention_result.json `
+  --output evaluation/results/abstention_latest.json `
   --top-k 5
 ```
 

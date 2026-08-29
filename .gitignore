@@ -25,3 +25,6 @@ data/index/
 data/models/
 logs/
 tmp/
+
+# 评测脚本的机器生成缓存；仓库保留人工可读的 Markdown 报告和数据集。
+evaluation/results/*.json

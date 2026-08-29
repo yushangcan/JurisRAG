@@ -4,7 +4,7 @@ JurisRAG 是一个面向政府采购、工程招投标法规的可运行 Agentic
 
 这是一个用于学习、面试展示和内部检索实验的工程项目，不是法律意见系统。法规可能修订、废止或存在适用范围差异，任何实际业务结论都必须回到官方最新文本复核。
 
-当前工程状态（2026-08-27）：代码已使用 Git 管理，`main` 保存稳定基线，优化在 `feat/observability-and-github-delivery` 分支按功能拆成独立 commit；44 项自动化测试通过。仓库尚未配置 GitHub remote，也尚未在 GitHub Actions 上实际运行，不能把本地验证写成远程 CI 已通过。
+当前工程状态（2026-08-29）：代码已使用 Git 管理，`main` 保存稳定基线，优化在 `feat/observability-and-github-delivery` 分支按功能拆成独立 commit；发布清理后 44 项自动化测试通过。仓库尚未配置 GitHub remote，也尚未在 GitHub Actions 上实际运行，不能把本地验证写成远程 CI 已通过。
 
 面试与优化说明：
 

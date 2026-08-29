@@ -744,7 +744,7 @@ Agent 已有轮数、工具数、模型数和纠正数预算，也能在 MCP 不
 
 **验证结果与边界**
 
-本地按 CI 环境重建得到 66 份文档、1,565 个 parent、2,299 个 child，44 项测试和 `pip check` 通过。尚未添加 GitHub remote，也没有远程 Actions 运行记录，所以只能写“已配置可复现 CI”，不能写“GitHub CI 已通过”。
+本地按 CI 环境重建得到 66 份文档、1,565 个 parent、2,299 个 child，44 项测试和 `pip check` 通过。2026-08-29 发布清理后，仓库只保留可读报告，删除可再生成的评测 JSON 缓存。尚未添加 GitHub remote，也没有远程 Actions 运行记录，所以只能写“已配置可复现 CI”，不能写“GitHub CI 已通过”。
 
 ### O39：API 与 MCP 容器化边界
 

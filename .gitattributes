@@ -15,3 +15,11 @@
 *.png binary
 *.jpg binary
 *.jpeg binary
+
+# 法规原文件的 SHA-256 用于入库审计。即使扩展名是 HTML，也必须逐字节保存，
+# 不能让 Git 在 Windows/Linux checkout 时转换换行并破坏官方文件哈希。
+data/source/** -text
+
+# 派生 Markdown 的转换审计报告同样记录文件 SHA-256，因此数据目录下的
+# Markdown 也必须保留生成时字节；项目文档和代码说明仍按 LF 统一。
+data/processed/** -text

@@ -9,6 +9,35 @@
 
 评测 JSON 输出目录已在根 `.gitignore` 中排除；README 中的 `retrieval_latest.json`、`abstention_latest.json` 和 RAGAS 缓存都不会自动进入提交。
 
+## 固定 RAG 与 Agent 同题对比
+
+`evaluation/datasets/legal_agent_rag_comparison_v1.jsonl` 是冻结的 30 题开发集：21
+道有答案题、7 道多文件融合题和 9 道边界/拒答题。运行前先审计来源：
+
+```powershell
+\.venv-eval\Scripts\python.exe -m evaluation.audit_agent_rag_comparison
+```
+
+完整对比要求回答模型和 RAGAS 裁判模型都通过环境变量配置。下面的变量只在当前
+PowerShell 进程中生效，密钥不会写入文件：
+
+```powershell
+$env:ENABLE_LLM='true'
+$env:LLM_PROVIDER='dashscope'       # 使用 OpenAI-compatible ChatOpenAI 客户端
+$env:DASHSCOPE_API_KEY='<answer-provider-key>'
+$env:DASHSCOPE_BASE_URL='https://api-sss.zwenooo.link/v1'
+$env:DASHSCOPE_MODEL='deepseek-chat'
+$env:RAGAS_EVALUATOR_API_KEY='<evaluator-key>'
+$env:RAGAS_EVALUATOR_BASE_URL='https://api-sss.zwenooo.link/v1'
+$env:RAGAS_EVALUATOR_MODEL='deepseek-chat'
+\.venv-eval\Scripts\python.exe -m evaluation.run_agent_rag_ragas_comparison
+```
+
+脚本会先做一次最小模型预检；预检失败时不会把降级答案当作正式结果。若只想先
+验证两套系统的执行、检索和边界指标，可在有效回答模型配置下使用
+`--skip-ragas`，但报告状态会明确标记为 `generation_complete_ragas_skipped`，不
+会冒充 RAGAS 已完成。
+
 ## 重新生成
 
 ```powershell

@@ -876,6 +876,31 @@ async def async_main(args: argparse.Namespace) -> None:
         for row in rows
         if row.get("execution_error")
     ]
+    # 仅有 RAGAS 缓存文件并不代表所有指标都评测成功。
+    # 例如评测模型额度耗尽时，缓存仍会保存 error，但 value 为 None。
+    # 这里按“系统 × 可回答题 × 五项指标”检查有效值，避免把部分结果误报为 complete。
+    expected_ragas_values = (
+        sum(1 for case in cases if case["should_answer"])
+        * len(system_rows)
+        * len(RAGAS_METRICS)
+    )
+    valid_ragas_values = sum(
+        1
+        for score in ragas_scores.values()
+        for metric in RAGAS_METRICS
+        if score.get("metrics", {}).get(metric, {}).get("value") is not None
+    )
+    ragas_partial = bool(
+        not args.skip_ragas
+        and not ragas_error
+        and ragas_scores
+        and valid_ragas_values < expected_ragas_values
+    )
+    if ragas_partial:
+        ragas_error = (
+            f"RAGAS 仅完成 {valid_ragas_values}/{expected_ragas_values} 个指标值；"
+            "其余题目请查看 ragas_scores 中的 error 字段。"
+        )
     status = (
         "generation_complete_ragas_skipped"
         if not execution_errors and args.skip_ragas
@@ -900,7 +925,13 @@ async def async_main(args: argparse.Namespace) -> None:
         "evaluator_model": evaluator_model,
         "ragas_version": "0.4.3" if not args.skip_ragas else None,
         "ragas_status": (
-            "skipped_by_user" if args.skip_ragas else "failed" if ragas_error else "complete"
+            "skipped_by_user"
+            if args.skip_ragas
+            else "partial"
+            if ragas_partial
+            else "failed"
+            if ragas_error
+            else "complete"
         ),
         "ragas_error": ragas_error,
         "embedding_backend": EMBEDDING_BACKEND,

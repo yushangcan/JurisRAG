@@ -448,7 +448,13 @@ async def run_ragas_scores(
     from evaluation.run_ragas_full_eval import ProjectBgeEmbedding, score_one
 
     key, model, base_url = evaluator_settings()
-    client = AsyncOpenAI(api_key=key, base_url=base_url)
+    client = AsyncOpenAI(
+        api_key=key,
+        base_url=base_url,
+        default_headers={
+            "User-Agent": os.getenv("LLM_HTTP_USER_AGENT", "Mozilla/5.0")
+        },
+    )
     evaluator_llm = llm_factory(model, client=client, temperature=0, max_tokens=4096)
     embeddings = ProjectBgeEmbedding()
     semaphore = asyncio.Semaphore(concurrency)

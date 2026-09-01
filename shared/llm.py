@@ -7,6 +7,7 @@ other stage uses DashScope.
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from shared.config import get_llm_settings
@@ -27,6 +28,11 @@ def build_chat_model() -> Any | None:
             api_key=settings["api_key"],
             base_url=settings["base_url"] or None,
             temperature=0,
+            # 部分 OpenAI-compatible 网关会拦截 SDK 默认 User-Agent；允许通过
+            # 环境变量覆盖，默认使用兼容性更好的普通浏览器标识。
+            default_headers={
+                "User-Agent": os.getenv("LLM_HTTP_USER_AGENT", "Mozilla/5.0")
+            },
         )
 
     # DashScope exposes an OpenAI-compatible endpoint.  ChatOpenAI is only the
@@ -38,4 +44,7 @@ def build_chat_model() -> Any | None:
         api_key=settings["api_key"],
         base_url=settings["base_url"],
         temperature=0,
+        default_headers={
+            "User-Agent": os.getenv("LLM_HTTP_USER_AGENT", "Mozilla/5.0")
+        },
     )

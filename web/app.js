@@ -141,12 +141,14 @@ function renderCitation(citation, index) {
 
   const title = makeElement("span", "citation-title");
   title.append(makeElement("strong", "", citation.document_title || "未命名法规"));
-  const positionParts = [citation.category, citation.article_or_position, citationPageLabel(citation)].filter(Boolean);
+  const positionParts = [citation.category, citation.document_number, citation.article_or_position, citationPageLabel(citation)].filter(Boolean);
   title.append(makeElement("span", "", positionParts.join(" · ") || "正文位置未标注"));
   summary.append(title, makeElement("span", "expand-label", "展开原文"));
 
   const body = makeElement("div", "citation-body");
   const metadata = makeElement("div", "citation-metadata");
+  if (citation.promulgated_date) metadata.append(makeElement("span", "meta-chip", `公布日期：${citation.promulgated_date}`));
+  if (citation.effective_date) metadata.append(makeElement("span", "meta-chip", `文本记载施行日期：${citation.effective_date}`));
   (citation.retrieval_channels || []).forEach((channel) => {
     metadata.append(makeElement("span", "channel-chip", `通道：${channel}`));
   });

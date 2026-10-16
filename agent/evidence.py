@@ -84,6 +84,12 @@ def citation_from_evidence(row: dict[str, Any], supports_issues: list[str]) -> d
     return {
         "evidence_id": str(row.get("parent_id") or row.get("chunk_id", "")),
         "document_title": metadata.get("title", row.get("title", "")),
+        "document_number": metadata.get("document_number", ""),
+        "promulgated_date": metadata.get("promulgated_date", ""),
+        "effective_date": metadata.get("effective_date", ""),
+        "legal_status": metadata.get("legal_status", ""),
+        "status_verified_at": metadata.get("status_verified_at", ""),
+        "raw_sha256": metadata.get("sha256", ""),
         "category": metadata.get("category", ""),
         "article_or_position": (
             metadata.get("article_number")

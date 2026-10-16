@@ -156,6 +156,15 @@ MCP 只在对接外部客户端时使用：
 
 当前报告见 [30 题回归](evaluation/results/lightweight_agent_v2.md) 与 [50 题回归](evaluation/results/lightweight_gold50_v2.md)。两者均为开发回归，部分场景规则参考了开发反馈，不能当作独立测试集或线上准确率。历史 RAGAS 和旧框架报告仅作历史记录，不能拼接比较。
 
+| 本次离线回归 | 基础 RAG | Agent |
+| --- | ---: | ---: |
+| 30题 Parent Recall@5 | 0.8333 | 0.9762 |
+| 30题边界正确拒答 | 9/9 | 9/9 |
+| 50题 Parent Recall@5 | 0.9000 | 1.0000 |
+| 50题有依据题误拒 | 5/50 | 0/50 |
+
+以上是规则参与开发后的回归结果，检索全部命中不能表述为法律回答全部正确。实际验收与剩余缺口见 [轻量化验收记录](docs/轻量化验收报告.md)。
+
 已在独立 Python 3.12 轻量环境验证建库、测试和真实本地 HTTP 请求；该环境没有 Chroma、LangChain、LangGraph、MCP、FastEmbed、Torch、NumPy。可选 MCP 的内存协议会话另行测试。当前未验证付费模型端到端质量、BGE 实际推理、浏览器交互、容器运行和远端 CI。
 
 ## 部署与回退

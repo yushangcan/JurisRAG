@@ -7,6 +7,8 @@
 .venv-lite
 .resume_task
 .workbuddy
+*.docx
+!data/source/**/*.docx
 evaluation/results
 __pycache__
 *.py[cod]

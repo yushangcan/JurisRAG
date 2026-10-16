@@ -1,6 +1,6 @@
 """可切换的中文语义Embedding与可复现实验用hash基线。
 
-默认使用ONNX版 ``BAAI/bge-small-zh-v1.5``。旧字符hash实现继续保留，
+可选 hybrid 使用ONNX版 ``BAAI/bge-small-zh-v1.5``。字符hash实现保留，
 不是作为生产方案，而是为了同一语料、同一检索器下做可复现实验对照。
 文档和查询分别调用 ``passage_embed``/``query_embed``，避免未来换成需要
 query前缀的模型时把两种角色混在一起。
@@ -78,7 +78,7 @@ def _semantic_model():
 
 
 def _as_float_lists(vectors: Iterable) -> list[list[float]]:
-    """Chroma需要普通Python列表，不能直接保存NumPy数组。"""
+    """把模型向量转成普通浮点列表，由存储层统一序列化。"""
 
     return [vector.astype("float32", copy=False).tolist() for vector in vectors]
 
@@ -94,7 +94,7 @@ def embed_documents(texts: list[str]) -> list[list[float]]:
 
 
 def embed_query(text: str) -> list[float]:
-    """编码一个用户查询或HyDE文本。"""
+    """编码一个用户查询。"""
 
     if EMBEDDING_BACKEND == "hash":
         return _hash_embed(text)

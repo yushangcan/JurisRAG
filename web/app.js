@@ -27,6 +27,7 @@ const elements = {
 
 // 页面只允许一个正在执行的请求。保存控制器后，用户清空页面时可以取消旧请求。
 let activeRequest = null;
+let history = [];
 
 /**
  * 创建带文本的 DOM 元素。所有接口文本都通过 textContent 写入，浏览器不会把
@@ -52,20 +53,16 @@ function safeHttpUrl(value) {
 /** 将不同的后端生成模式翻译成用户能直接看懂的中文。 */
 function generationModeLabel(mode) {
   const labels = {
-    llm: "模型归纳",
-    retrieval_fallback: "原文检索回答",
-    abstention: "证据不足拒答",
     agent_llm: "Agent 规划与模型归纳",
     agent_evidence_fallback: "Agent 规划与原文回答",
     agent_abstention: "Agent 证据不足拒答",
-    agent_baseline_fallback: "Agent 降级到固定 RAG",
+    agent_exact_reference: "指定法条原文",
+    rag_llm: "基础检索与模型归纳",
+    rag_evidence_fallback: "基础检索与原文回答",
+    rag_abstention: "基础检索证据不足拒答",
+    rag_exact_reference: "指定法条原文",
   };
   return labels[mode] || mode || "未知模式";
-}
-
-/** 把布尔值转成用于调试面板的清晰文本。 */
-function yesOrNo(value) {
-  return value ? "是" : "否";
 }
 
 /**
@@ -204,58 +201,24 @@ function traceItem(label, value) {
  * 只展示面试和调试最有价值的检索字段，避免直接倾倒整段 JSON 影响阅读。
  * 这些字段能说明是否精确查询、是否触发多路召回以及 Reranker 是否生效。
  */
-function renderTrace(trace = {}, agentTrace = {}, data = {}) {
-  if (agentTrace && Object.keys(agentTrace).length) {
+function renderTrace(agentTrace = {}, data = {}) {
     const actions = (agentTrace.actions || [])
       .map((action) => `${action.tool_name}(${action.status || "unknown"})`)
       .join(" → ");
-    const terminology = Object.entries(data.terminology_map || {})
-      .map(([spoken, legal]) => `${spoken} → ${legal}`)
-      .join("；");
     elements.trace.replaceChildren(
-      traceItem("执行模式", "受约束 Agent + MCP"),
+      traceItem("执行模式", agentTrace.mode === "rag" ? "基础检索" : "法律检索助手"),
       traceItem("意图", data.intent || "未提供"),
       traceItem("适用领域", data.domain || "uncertain"),
       traceItem("标准化问题", data.normalized_question || data.question),
-      traceItem("术语理解", terminology || "未识别口语映射"),
       traceItem("法律争点", (data.legal_issues || []).join("；") || "未提供"),
       traceItem("检索轮数", agentTrace.iterations ?? 0),
-      traceItem("MCP 调用数", agentTrace.tool_call_count ?? 0),
+      traceItem("检索操作数", agentTrace.tool_call_count ?? 0),
       traceItem("模型调用数", agentTrace.llm_call_count ?? 0),
-      traceItem("纠正次数", agentTrace.correction_count ?? 0),
       traceItem("工具轨迹", actions || "未调用搜索工具"),
       traceItem("停止原因", data.stop_reason || "未提供"),
       traceItem("可回答性", data.answerability || "未提供"),
       traceItem("待补充事实", (data.missing_user_facts || []).join("；") || "无"),
     );
-    return;
-  }
-  const assessment = trace.final_assessment || {};
-  const initialPlan = trace.initial_retrieval_plan || {};
-  const finalPlan = trace.final_retrieval_plan || initialPlan;
-  const terminology = Object.entries(initialPlan.terminology_map || {})
-    .map(([spoken, legal]) => `${spoken} → ${legal}`)
-    .join("；");
-  elements.trace.replaceChildren(
-    traceItem("检索模式", trace.mode),
-    traceItem("大模型规划", initialPlan.planner_used ? "已使用" : "降级为指标判断"),
-    traceItem("标准化问题", initialPlan.normalized_question || "未提供"),
-    traceItem("术语理解", terminology || "未识别口语映射"),
-    traceItem("初检可回答性", initialPlan.answerability || "未提供"),
-    traceItem("补检后可回答性", finalPlan.answerability || "未提供"),
-    traceItem("精确法规问题", yesOrNo(trace.exact_query)),
-    traceItem("HyDE 已使用", yesOrNo(trace.hyde_used)),
-    traceItem("触发二次召回", yesOrNo(trace.retry_triggered)),
-    traceItem("二次召回原因", trace.retry_reason || "无需二次召回"),
-    traceItem("召回通道", (trace.channels || []).join("、") || "未提供"),
-    traceItem("查询变体数", (trace.query_variants || []).length),
-    traceItem("Reranker", trace.reranker_backend || "未使用"),
-    traceItem("重排候选数", trace.rerank_candidates),
-    traceItem("证据是否充分", yesOrNo(trace.evidence_sufficient)),
-    traceItem("证据判断", assessment.reason || trace.refusal_reason || "未提供"),
-    traceItem("最高重排分数", assessment.top_reranker_score),
-    traceItem("加权词项覆盖", assessment.weighted_query_coverage),
-  );
 }
 
 /** 把一次完整 API 响应更新到结果区域。 */
@@ -264,12 +227,17 @@ function renderResult(data) {
   elements.answer.textContent = data.answer || "接口没有返回回答内容。";
   elements.disclaimer.textContent = data.disclaimer || "";
   renderCitations(data.citations || []);
-  renderTrace(data.retrieval_trace || {}, data.agent_trace || {}, data);
+  renderTrace(data.agent_trace || {}, data);
 
   const alertText = data.warning || data.refusal_reason || "";
   elements.answerAlert.hidden = !alertText && !data.insufficient_evidence;
   elements.answerAlert.classList.toggle("is-refusal", Boolean(data.insufficient_evidence));
   elements.answerAlert.textContent = alertText || "当前证据不足，系统已停止生成法律结论。";
+  if (data.status === "needs_clarification") {
+    elements.answerAlert.hidden = false;
+    elements.answerAlert.classList.remove("is-refusal");
+    elements.answerAlert.textContent = "需要补充信息：" + (data.clarifying_questions || []).join("；") + "。当前仅展示一般规则。";
+  }
   elements.result.hidden = false;
 }
 
@@ -289,7 +257,9 @@ async function responseError(response) {
  * top_k 是最终希望返回的父法条数量。
  */
 async function askQuestion(question, topK, mode) {
-  activeRequest = new AbortController();
+  if (activeRequest) return;
+  const controller = new AbortController();
+  activeRequest = controller;
   setLoading(true);
   hideFeedback();
   elements.result.hidden = true;
@@ -297,24 +267,29 @@ async function askQuestion(question, topK, mode) {
   try {
     const endpoint = mode === "agent" ? "/api/v1/agent/questions" : "/api/v1/questions";
     elements.loadingText.textContent = mode === "agent"
-      ? "Agent 正在识别意图、选择 MCP 工具并验证证据，请稍候..."
-      : "正在进行精确匹配、混合检索与重排，请稍候...";
+      ? "正在识别场景、查找适用法条并核对证据，请稍候..."
+      : "正在查找与问题相关的法条，请稍候...";
     const response = await fetch(endpoint, {
       method: "POST",
       headers: { "Content-Type": "application/json", Accept: "application/json" },
-      body: JSON.stringify({ question, top_k: topK, debug_trace: true }),
-      signal: activeRequest.signal,
+      body: JSON.stringify(mode === "agent" ? { question, top_k: topK, debug_trace: true, history } : { question, top_k: topK }),
+      signal: controller.signal,
     });
     if (!response.ok) throw new Error(await responseError(response));
-    renderResult(await response.json());
+    const data = await response.json();
+    if (controller.signal.aborted || activeRequest !== controller) return;
+    renderResult(data);
+    if (mode === "agent") history = [...history, { role: "user", content: question }].slice(-4);
     elements.result.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     if (error.name !== "AbortError") {
       showFeedback("问答请求失败", error.message || "无法连接后端服务，请稍后重试。");
     }
   } finally {
-    setLoading(false);
-    activeRequest = null;
+    if (activeRequest === controller) {
+      setLoading(false);
+      activeRequest = null;
+    }
   }
 }
 
@@ -333,7 +308,9 @@ function handleSubmit(event) {
 /** 清空当前问题和回答，并取消可能仍在运行的网络请求。 */
 function clearWorkspace() {
   if (activeRequest) activeRequest.abort();
+  activeRequest = null;
   elements.question.value = "";
+  history = [];
   elements.result.hidden = true;
   hideFeedback();
   setLoading(false);

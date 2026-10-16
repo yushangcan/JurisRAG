@@ -2,7 +2,7 @@
 
 示例：
 
-    # 本地 Agent 子进程最常用，不占网络端口
+    # 可选外部客户端使用，不占网络端口；主 Agent 无需启动本服务
     python run_mcp.py --transport stdio
 
     # 跨进程或调试客户端使用，地址为 http://127.0.0.1:8001/mcp

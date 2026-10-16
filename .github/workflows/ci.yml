@@ -20,8 +20,7 @@ jobs:
     timeout-minutes: 25
     env:
       ENABLE_LLM: "false"
-      EMBEDDING_BACKEND: hash
-      RERANKER_BACKEND: none
+      RETRIEVAL_MODE: lexical
       INDEX_DIR: tmp/ci-index
       PYTHONUTF8: "1"
 
@@ -38,7 +37,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          python -m pip install -r requirements-dev.txt
           python -m pip check
 
       - name: Verify repository safety boundary
@@ -56,3 +55,8 @@ jobs:
 
       - name: Run test suite
         run: python -m pytest -q
+
+      - name: Verify offline evaluation and runtime boundary
+        run: |
+          python -m evaluation.audit_agent_rag_comparison
+          python -m evaluation.run_lightweight_eval --output tmp/ci-eval.json

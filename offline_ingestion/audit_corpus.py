@@ -12,7 +12,7 @@ import json
 import re
 from pathlib import Path
 
-from offline_ingestion.build_index import verify_file_hash
+from offline_ingestion.corpus import verify_file_hash
 from offline_ingestion.document_loader import read_source_file
 from shared.config import MANIFEST_PATH, RAW_LAWS_DIR
 

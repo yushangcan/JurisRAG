@@ -1,5 +1,7 @@
 # JurisRAG 全部优化记录
 
+> 历史文档：以下记录针对轻量重构前版本，不描述当前默认架构。当前实现及评测见仓库 README 与 evaluation/results/lightweight_agent_v2.md；旧代码保存在 backup/pre-lightweight-agent-20261016。
+
 > 本文按“原本是什么、存在什么问题、修改了什么、结果如何、证据边界是什么”记录项目演进。数值只引用已有评测报告，同一行的前后对比必须使用同一数据集。
 
 ## 一、初始基线

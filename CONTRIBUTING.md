@@ -6,8 +6,8 @@
 
 1. 使用 Python 3.12 或项目已验证的兼容版本创建独立虚拟环境。
 2. 复制 `.env.example` 为 `.env`，真实 Key 只保存在本机。
-3. 安装依赖：`python -m pip install -r requirements.txt`。
-4. 若没有本地模型，可先设置 `EMBEDDING_BACKEND=hash`、`RERANKER_BACKEND=none`，再运行 `python -m offline_ingestion.build_index`。
+3. 安装开发依赖：`python -m pip install -r requirements-dev.txt`。
+4. 设置 `RETRIEVAL_MODE=lexical`、`ENABLE_LLM=false`，运行 `python -m offline_ingestion.build_index`；默认不需要向量模型。
 5. 运行 `python -m pytest -q` 和 `python -m pip check`。
 
 ## 分支与提交

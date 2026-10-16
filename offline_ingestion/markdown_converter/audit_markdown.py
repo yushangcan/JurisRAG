@@ -11,7 +11,7 @@ import hashlib
 from collections import Counter
 from pathlib import Path
 
-from offline_ingestion.build_index import load_manifest
+from offline_ingestion.corpus import load_manifest
 from offline_ingestion.chunker import read_markdown_articles
 from offline_ingestion.document_loader import read_source_file
 from offline_ingestion.markdown_metadata import read_front_matter

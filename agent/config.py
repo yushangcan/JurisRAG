@@ -1,115 +1,38 @@
-"""Agent 的集中配置与边界校验。"""
+"""Agent 只保留直接影响开销与停止行为的少量配置。"""
 
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
 
-# 导入 shared.config 会先加载项目根目录的 .env。
 from shared.config import PROJECT_ROOT  # noqa: F401
 
 
-def _positive_int(name: str, default: int) -> int:
+def _bounded(name: str, default: int, maximum: int) -> int:
     value = int(os.getenv(name, str(default)))
     if value <= 0:
-        raise ValueError(f"{name} 必须大于 0")
-    return value
-
-
-def _boolean(name: str, default: bool) -> bool:
-    """只接受常见布尔写法，避免拼写错误悄悄改变安全路径。"""
-
-    raw = os.getenv(name, str(default)).strip().lower()
-    if raw not in {"true", "false"}:
-        raise ValueError(f"{name} 只能是 true 或 false")
-    return raw == "true"
+        raise ValueError(f"{name} 必须为正数")
+    return min(value, maximum)
 
 
 @dataclass(frozen=True)
 class AgentSettings:
-    """一次 Agent 请求使用的预算；冻结后节点不能在运行时偷偷改参数。"""
-
-    enabled: bool
-    mcp_server_url: str
-    max_iterations: int
-    max_tool_calls: int
-    max_llm_calls: int
-    max_corrections: int
-    max_child_evidence: int
-    max_parent_evidence: int
-    max_citations: int
-    timeout_seconds: int
-    request_timeout_seconds: int
-    llm_timeout_seconds: int
-    baseline_timeout_seconds: int
-    mcp_timeout_seconds: int
-    mcp_retry_attempts: int
-    mcp_circuit_failure_threshold: int
-    mcp_circuit_recovery_seconds: int
-    health_timeout_seconds: int
-    no_progress_limit: int
-    tool_top_k: int
-    max_question_chars: int
-    max_concurrent_requests: int
-    exact_reference_fast_path: bool
-    exact_fast_path_use_llm: bool
+    enabled: bool = True
+    max_iterations: int = 2
+    max_llm_calls: int = 2
+    llm_timeout_seconds: int = 20
+    request_timeout_seconds: int = 50
+    max_question_chars: int = 2000
+    max_concurrent_requests: int = 2
 
 
 def get_agent_settings() -> AgentSettings:
-    """读取 Agent 配置，并在程序启动时尽早拒绝不合理参数。"""
-
-    settings = AgentSettings(
-        enabled=os.getenv("ENABLE_AGENT", "true").strip().lower() == "true",
-        mcp_server_url=os.getenv(
-            "MCP_SERVER_URL", "http://127.0.0.1:8001/mcp"
-        ).strip(),
-        max_iterations=_positive_int("AGENT_MAX_ITERATIONS", 3),
-        max_tool_calls=_positive_int("AGENT_MAX_TOOL_CALLS", 8),
-        max_llm_calls=_positive_int("AGENT_MAX_LLM_CALLS", 7),
-        max_corrections=_positive_int("AGENT_MAX_CORRECTIONS", 2),
-        max_child_evidence=_positive_int("AGENT_MAX_CHILD_EVIDENCE", 20),
-        max_parent_evidence=_positive_int("AGENT_MAX_PARENT_EVIDENCE", 8),
-        max_citations=_positive_int("AGENT_MAX_CITATIONS", 5),
-        timeout_seconds=_positive_int("AGENT_TIMEOUT_SECONDS", 90),
-        # 图预算、单次模型预算和固定 RAG 降级预算彼此独立。最外层请求预算
-        # 保证即使某个依赖没有正确响应，API 也能在有限时间内停止。
-        request_timeout_seconds=_positive_int("AGENT_REQUEST_TIMEOUT_SECONDS", 120),
-        llm_timeout_seconds=_positive_int("AGENT_LLM_TIMEOUT_SECONDS", 35),
-        baseline_timeout_seconds=_positive_int("AGENT_BASELINE_TIMEOUT_SECONDS", 25),
-        mcp_timeout_seconds=_positive_int("AGENT_MCP_TIMEOUT_SECONDS", 30),
-        mcp_retry_attempts=_positive_int("AGENT_MCP_RETRY_ATTEMPTS", 2),
-        mcp_circuit_failure_threshold=_positive_int(
-            "AGENT_MCP_CIRCUIT_FAILURE_THRESHOLD", 3
-        ),
-        mcp_circuit_recovery_seconds=_positive_int(
-            "AGENT_MCP_CIRCUIT_RECOVERY_SECONDS", 30
-        ),
-        health_timeout_seconds=_positive_int("AGENT_HEALTH_TIMEOUT_SECONDS", 10),
-        no_progress_limit=_positive_int("AGENT_NO_PROGRESS_LIMIT", 2),
-        tool_top_k=_positive_int("AGENT_TOOL_TOP_K", 5),
-        max_question_chars=_positive_int("AGENT_MAX_QUESTION_CHARS", 2000),
-        max_concurrent_requests=_positive_int("AGENT_MAX_CONCURRENT_REQUESTS", 2),
-        # 快速路径默认只返回精确命中的法规原文，不生成法律评价。它仍经过 MCP
-        # 工具白名单、parent 回填、引用构造和最终响应契约。
-        exact_reference_fast_path=_boolean("AGENT_EXACT_REFERENCE_FAST_PATH", True),
-        exact_fast_path_use_llm=_boolean("AGENT_EXACT_FAST_PATH_USE_LLM", False),
+    return AgentSettings(
+        enabled=os.getenv("ENABLE_AGENT", "true").lower() == "true",
+        max_iterations=_bounded("AGENT_MAX_ITERATIONS", 2, 2),
+        max_llm_calls=_bounded("AGENT_MAX_LLM_CALLS", 2, 2),
+        llm_timeout_seconds=_bounded("AGENT_LLM_TIMEOUT_SECONDS", 20, 25),
+        request_timeout_seconds=_bounded("AGENT_REQUEST_TIMEOUT_SECONDS", 50, 60),
+        max_question_chars=_bounded("AGENT_MAX_QUESTION_CHARS", 2000, 2000),
+        max_concurrent_requests=_bounded("AGENT_MAX_CONCURRENT_REQUESTS", 2, 8),
     )
-    if not settings.mcp_server_url.startswith(("http://", "https://")):
-        raise ValueError("MCP_SERVER_URL 必须是 http/https 地址")
-    if settings.tool_top_k > 10:
-        raise ValueError("AGENT_TOOL_TOP_K 第一版不能大于 10")
-    if settings.max_tool_calls < settings.max_iterations * 2:
-        raise ValueError("AGENT_MAX_TOOL_CALLS 至少应允许每轮一次检索和一次覆盖检查")
-    if settings.request_timeout_seconds <= settings.timeout_seconds:
-        raise ValueError("AGENT_REQUEST_TIMEOUT_SECONDS 必须大于 AGENT_TIMEOUT_SECONDS")
-    if settings.llm_timeout_seconds >= settings.request_timeout_seconds:
-        raise ValueError("AGENT_LLM_TIMEOUT_SECONDS 必须小于端到端请求超时")
-    if settings.mcp_timeout_seconds >= settings.request_timeout_seconds:
-        raise ValueError("AGENT_MCP_TIMEOUT_SECONDS 必须小于端到端请求超时")
-    if settings.mcp_retry_attempts > 3:
-        raise ValueError("AGENT_MCP_RETRY_ATTEMPTS 第一版不能大于 3")
-    if settings.health_timeout_seconds >= settings.request_timeout_seconds:
-        raise ValueError("AGENT_HEALTH_TIMEOUT_SECONDS 必须小于端到端请求超时")
-    if settings.max_question_chars > 10000:
-        raise ValueError("AGENT_MAX_QUESTION_CHARS 第一版不能大于 10000")
-    return settings

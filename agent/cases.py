@@ -1,0 +1,136 @@
+"""常见场景只规定待查争点与法源位置；法律结论始终来自实际检索的原文。"""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass
+
+from agent.schemas import EvidenceNeed, ExactReference
+
+
+@dataclass(frozen=True)
+class CaseRule:
+    key: str
+    label: str
+    pattern: str
+    issue: str
+    query: str
+    sources: tuple[tuple[str, str], ...]
+    facts: tuple[str, ...] = ()
+    domain: str = ""
+
+
+RULES = (
+    CaseRule("procurement_methods", "采购方式", r"采购.*(?:哪些|什么).*方式|采购方式.*(?:哪些|主要)|主要.*采购方式",
+             "采购方式及主要方式", "政府采购采用方式公开招标邀请招标竞争性谈判单一来源询价",
+             (("政府采购法", "第二十六条"),)),
+    CaseRule("record_retention", "采购档案保存", r"采购.*(?:文件|档案).*(?:保存|保管|留存)|(?:保存|保管).*(?:采购文件|采购档案)",
+             "采购档案的保存年限及起算点", "采购文件保存期限采购结束之日起至少十五年",
+             (("政府采购法", "第四十二条"),)),
+    CaseRule("single_source", "单一来源采购", r"单一来源.*(情形|条件|适用|可以)|(?:哪些|什么).*单一来源",
+             "采用单一来源采购的法定情形", "单一来源只能唯一供应商不可预见紧急情况一致性配套",
+             (("政府采购法", "第三十一条"),)),
+    CaseRule("inquiry_offer", "询价报价", r"询价.*(?:报价|价格)|报价.*询价",
+             "询价采购的报价次数与更改限制", "询价供应商一次报出不得更改价格",
+             (("政府采购法", "第四十条"),)),
+    CaseRule("consortium", "联合体资格", r"联合体.*(?:资质|资格|等级)|(?:资质|资格).*联合体",
+             "联合体资格及同类资质等级认定", "联合体同类资质承担相同工作较低等级",
+             (("政府采购法", "第二十四条"), ("招标投标法", "第三十一条")),
+             ("适用法律制度、联合体成员资质与分工",)),
+    CaseRule("qualification", "供应商资格", r"(供应商|政府采购).*(资格条件|基本条件|具备.{0,5}条件|资格要求)",
+             "供应商基本资格条件", "供应商参加政府采购活动应当具备条件",
+             (("政府采购法", "第二十二条"),)),
+    CaseRule("materials", "资格证明材料", r"(供应商|资格|条件).*(证明|材料)|证明.*供应商.*条件",
+             "资格证明材料", "供应商参加政府采购活动应当提供材料证明",
+             (("政府采购法实施条例", "第十七条"),)),
+    CaseRule("related", "关联供应商", r"(同一|同一个).*(负责人|控股|管理关系)|关联供应商",
+             "关联供应商参加同一合同采购", "单位负责人同一人直接控股管理关系供应商同一合同",
+             (("政府采购法实施条例", "第十八条"),), ("供应商之间的控制或管理关系",)),
+    CaseRule("same_brand", "同品牌投标", r"同一品牌|同品牌|相同品牌",
+             "同品牌投标人数量与评审", "相同品牌核心产品投标人综合评分最低评标价",
+             (("政府采购货物和服务招标投标管理办法", "第三十一条"),),
+             ("采购标的、核心产品和评标方法",)),
+    CaseRule("discrimination", "不合理限制供应商", r"(地域|本地|外地|注册资本|业绩|资质|差别待遇|排斥|歧视).*(限制|要求|条件|可以|能否|合法|责任)|限制.*(供应商|投标人)|地域歧视",
+             "是否设置不合理或歧视性条件", "不合理条件限制排斥供应商特定行政区域行业业绩注册资本",
+             (("政府采购法实施条例", "第二十条"), ("招标投标法实施条例", "第三十二条")),
+             ("项目适用的法律制度及所设条件完整原文",)),
+    CaseRule("discrimination_liability", "违法限制的责任", r"(限制|歧视|排斥|差别待遇).*(责任|处罚|什么处理|后果)|违法.*(限制|排斥)",
+             "违法限制排斥的法律责任", "不合理条件供应商差别待遇歧视待遇责令改正警告",
+             (("政府采购法", "第七十一条"), ("招标投标法", "第五十一条"))),
+    CaseRule("document_rules", "招标文件要求", r"(招标文件|投标文件|采购文件).*(页|装订|格式|实质性|内部制度)|内部制度.*(投标|采购)",
+             "设置文件要求的权限与合理性", "招标文件项目特点实际需要实质性要求不合理条件",
+             (("招标投标法", "第十九条"), ("招标投标法实施条例", "第三十二条"),
+              ("政府采购法实施条例", "第二十条"), ("政府采购货物和服务招标投标管理办法", "第二十条")),
+             ("项目属于政府采购还是工程建设招标", "招标文件中该项条件及法律后果的完整原文")),
+    CaseRule("rejection", "否决投标依据", r"(页|装订|格式|实质性|文件要求).*(否决|无效|废标)|否决.*(页|文件要求)",
+             "未满足文件要求的否决依据", "评标委员会应当否决投标实质性要求条件",
+             (("招标投标法实施条例", "第五十一条"), ("政府采购货物和服务招标投标管理办法", "第六十三条")),
+             ("评标依据、具体偏差与采购方式",)),
+    CaseRule("question", "质疑程序", r"质疑",
+             "供应商质疑期限和形式", "供应商知道应知权益损害书面形式质疑工作日",
+             (("政府采购质疑和投诉办法", "第十条"), ("政府采购法", "第五十二条")),
+             ("知道或应当知道权益受损的时间及质疑对象",), "government_procurement"),
+    CaseRule("question_reply", "质疑答复", r"质疑.*(答复|回复)|答复.*质疑",
+             "质疑答复期限", "收到质疑函工作日书面答复",
+             (("政府采购质疑和投诉办法", "第十三条"),)),
+    CaseRule("complaint", "投诉程序", r"投诉",
+             "投诉的前置程序与期限", "质疑答复不满意未作答复投诉期限财政部门",
+             (("政府采购质疑和投诉办法", "第十七条"), ("政府采购法", "第五十五条")),
+             ("是否已经质疑、答复收到日期或答复期届满日期",), "government_procurement"),
+    CaseRule("engineering_scope", "工程法律适用", r"政府采购.*工程|工程.*(适用|招标投标法|政府采购法)|政府采购法.*招标投标法",
+             "政府采购工程的法律适用", "政府采购工程招标方式其他方式适用招标投标法",
+             (("政府采购法实施条例", "第七条"),),
+             ("工程性质、资金来源以及采用的采购方式",)),
+    CaseRule("mandatory", "必须招标范围", r"必须招标|强制招标|依法招标.*范围",
+             "依法必须招标的项目范围", "必须进行招标工程项目范围全部部分国有资金",
+             (("招标投标法", "第三条"), ("必须招标的工程项目规定", "第二条"))),
+    CaseRule("sme", "中小企业采购政策", r"中小企业|小微企业",
+             "中小企业支持政策", "中小企业预留份额价格扣除支持小微企业",
+             (("政府采购促进中小企业发展管理办法", ""),),
+             ("采购标的、企业划型和适用的采购政策版本",)),
+    CaseRule("sme_update", "中小企业政策调整", r"中小企业|小微企业",
+             "中小企业政策的后续调整", "进一步加大政府采购支持中小企业力度价格扣除",
+             (("关于进一步加大政府采购支持中小企业力度的通知", ""),)),
+    CaseRule("false_material", "虚假材料责任", r"(虚假|伪造|造假).*材料|材料.*(虚假|造假)",
+             "供应商提供虚假材料的责任", "提供虚假材料谋取中标成交供应商处罚",
+             (("政府采购法", "第七十七条"),)),
+    CaseRule("evaluation_methods", "评标方法", r"评标方法|最低评标价|综合评分",
+             "政府采购货物服务的评标方法", "评标方法最低评标价法综合评分法",
+             (("政府采购货物和服务招标投标管理办法", "第五十四条"),)),
+    CaseRule("evaluation_committee", "评标委员会", r"评标委员会.*(?:人数|组成|专家|比例)|专家比例",
+             "评标委员会人数与专家比例", "评标委员会采购人代表评审专家五人以上单数三分之二",
+             (("政府采购货物和服务招标投标管理办法", "第四十七条"),)),
+)
+
+
+def match_cases(question: str, domain: str) -> tuple[list[EvidenceNeed], list[str], list[str]]:
+    question = " ".join(question.split())
+    needs: list[EvidenceNeed] = []
+    labels: list[str] = []
+    facts: list[str] = []
+    for rule in RULES:
+        if rule.domain and domain not in {rule.domain, "uncertain"}:
+            continue
+        if not re.search(rule.pattern, question):
+            continue
+        sources = list(rule.sources)
+        if domain == "government_procurement":
+            sources = [source for source in sources if not source[0].startswith("招标投标法")]
+        elif domain == "construction_bidding":
+            sources = [source for source in sources if not source[0].startswith("政府采购")]
+        if not sources:
+            continue
+        # 同一争点的来源是可选的适用法源；不同争点必须分别获得证据。
+        if domain == "uncertain" and any(t.startswith("政府采购") for t, _ in sources) and any(t.startswith("招标投标") for t, _ in sources):
+            for label, prefix in (("政府采购", "政府采购"), ("工程招标", "招标投标")):
+                needs.append(EvidenceNeed(issue=f"{rule.issue}（{label}）", query=rule.query,
+                    sources=[ExactReference(document_title=t, article_number=a) for t, a in sources if t.startswith(prefix)]))
+        else:
+            needs.append(EvidenceNeed(issue=rule.issue, query=rule.query,
+                                     sources=[ExactReference(document_title=t, article_number=a) for t, a in sources]))
+        labels.append(rule.label)
+        facts.extend(rule.facts)
+    facts = list(dict.fromkeys(facts))
+    if domain != "uncertain":
+        facts = [fact for fact in facts if fact != "项目属于政府采购还是工程建设招标"]
+    return needs, labels, facts

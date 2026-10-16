@@ -1,5 +1,6 @@
 """Web shell smoke tests that do not run the expensive retrieval pipeline."""
 
+import pytest
 from fastapi.testclient import TestClient
 
 from agent.service import AgentBusyError
@@ -18,7 +19,7 @@ def test_home_page_contains_question_interface() -> None:
     assert "text/html" in response.headers["content-type"]
     assert 'id="question-form"' in response.text
     assert 'id="query-mode"' in response.text
-    assert "Agent RAG" in response.text
+    assert "法律检索助手" in response.text
     assert "从法条原文中查找答案" in response.text
 
 
@@ -37,7 +38,7 @@ def test_frontend_static_assets_are_served() -> None:
 def test_agent_endpoint_uses_separate_route(monkeypatch) -> None:
     """Agent API 不覆盖固定 RAG 路由，并能隐藏逐节点 debug 事件。"""
 
-    async def fake_run_agent(question: str, top_k: int, request_id: str | None = None):
+    async def fake_run_agent(question: str, top_k: int, request_id: str | None = None, history=None, mode="agent"):
         return {
             "request_id": request_id,
             "question": question,
@@ -82,7 +83,7 @@ def test_question_request_rejects_whitespace_and_oversized_input() -> None:
 
 
 def test_readiness_distinguishes_core_ready_from_agent_degraded(monkeypatch) -> None:
-    """MCP故障不应把仍可运行的固定RAG误报成整个服务宕机。"""
+    """关闭Agent时仍可提供基础RAG。"""
 
     monkeypatch.setattr(
         "online_retrieval.api._knowledge_health",
@@ -129,3 +130,43 @@ def test_agent_capacity_exhaustion_returns_retryable_503(monkeypatch) -> None:
     )
     assert response.status_code == 503
     assert response.headers["Retry-After"] == "2"
+
+
+@pytest.mark.parametrize("route", ["/api/v1/questions", "/api/v1/agent/questions"])
+def test_real_http_question_refusal_and_evidence_contract(route):
+    response = client.post(route, json={"question": "政府采购法第二十二条"}, headers={"X-Request-ID": "http-e2e"})
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "answered"
+    assert data["request_id"] == response.headers["X-Request-ID"] == "http-e2e"
+    assert data["agent_trace"]["llm_call_count"] == 0
+    evidence = client.get("/api/v1/evidence/" + data["citations"][0]["evidence_id"])
+    assert evidence.status_code == 200
+    assert evidence.json()["text"] == data["citations"][0]["quote"]
+    refused = client.post(route, json={"question": "政府采购法第九十九条"}).json()
+    assert refused["status"] == "refused" and refused["citations"] == []
+
+
+@pytest.mark.parametrize("route", ["/api/v1/questions", "/api/v1/agent/questions"])
+def test_all_question_routes_handle_capacity_and_unexpected_errors(route, monkeypatch):
+    async def busy(*args, **kwargs):
+        raise AgentBusyError("当前请求较多")
+    monkeypatch.setattr("online_retrieval.api.run_agent", busy)
+    assert client.post(route, json={"question": "政府采购问题"}).status_code == 503
+
+    async def broken(*args, **kwargs):
+        raise Exception("private-key-and-user-data")
+    monkeypatch.setattr("online_retrieval.api.run_agent", broken)
+    response = client.post(route, json={"question": "政府采购问题"})
+    assert response.status_code == 502
+    assert "private-key-and-user-data" not in response.text
+
+
+def test_history_is_bounded_and_can_resolve_a_followup():
+    data = client.post("/api/v1/agent/questions", json={"question": "那第十三条呢？", "history": [
+        {"role": "user", "content": "《政府采购质疑和投诉办法》第十条"}]}).json()
+    assert [row["article_or_position"] for row in data["citations"]] == ["第十三条"]
+    response = client.post("/api/v1/agent/questions", json={"question": "政府采购问题", "history": [
+        {"role": "user", "content": "政府采购问题"}] * 7})
+    assert response.status_code == 422
+    assert client.get("/api/v1/evidence/nonexistent").status_code == 404

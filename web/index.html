@@ -36,7 +36,7 @@
           id="question-input"
           name="question"
           rows="4"
-          maxlength="1000"
+          maxlength="2000"
           placeholder="例如：政府采购法第二十二条规定了哪些供应商条件？"
           required
         ></textarea>
@@ -45,15 +45,15 @@
             <div class="top-k-control">
               <label for="query-mode">执行模式</label>
               <select id="query-mode" name="mode">
-                <option value="agent" selected>Agent RAG</option>
-                <option value="rag">固定 RAG</option>
+                <option value="agent" selected>法律检索助手</option>
+                <option value="rag">基础检索</option>
               </select>
             </div>
             <div class="top-k-control">
               <label for="top-k">返回证据数</label>
               <select id="top-k" name="top_k">
-                <option value="3" selected>3 条</option>
-                <option value="5">5 条</option>
+                <option value="3">3 条</option>
+                <option value="5" selected>5 条</option>
                 <option value="8">8 条</option>
                 <option value="10">10 条</option>
               </select>
@@ -75,6 +75,8 @@
           <button type="button" class="example-button">政府采购法第二十二条规定了哪些供应商条件？</button>
           <button type="button" class="example-button">哪些情形可以采用单一来源采购？</button>
           <button type="button" class="example-button">招标人可以限制外地供应商参加投标吗？</button>
+          <button type="button" class="example-button">供应商资格条件与证明材料分别有哪些？</button>
+          <button type="button" class="example-button">供应商对质疑答复不满意，如何投诉？</button>
         </div>
       </div>
     </section>
@@ -89,7 +91,7 @@
 
     <section id="loading-section" class="loading-section" hidden aria-live="polite">
       <div class="loading-line"></div>
-      <p id="loading-text">正在进行精确匹配、混合检索与重排，请稍候...</p>
+      <p id="loading-text">正在检索法条并核对证据，请稍候...</p>
     </section>
 
     <section id="result-section" class="result-section" hidden aria-labelledby="answer-title">

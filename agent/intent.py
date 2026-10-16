@@ -1,185 +1,117 @@
-"""确定性信号提取、意图降级和提示词构造。"""
+"""低成本规划与能力边界。领域外问题、缺少法源和缺少事实分别处理。"""
 
 from __future__ import annotations
 
 import re
 
-from agent.schemas import ExactReference, IntentAnalysis
-from online_retrieval.retriever import ARTICLE_PATTERN, DOCUMENT_NUMBER_PATTERN, TITLE_PATTERN
+from agent.cases import match_cases
+from agent.schemas import ExactReference, QueryPlan
+from shared.legal_text import article_value, references, title_matches
+
+LEGAL_JUDGMENT_MARKERS = ("合法", "违法", "能否", "可否", "是否有效", "可以否决", "责任", "处罚", "怎么办", "如何处理")
+DOMAIN_TERMS = ("采购", "招标", "投标", "供应商", "财政", "评标", "评审", "联合体", "询价", "中标", "质疑", "投诉", "差别待遇", "排斥供应商")
 
 
-GOVERNMENT_SIGNALS = ("政府采购", "供应商", "采购人", "财政部门", "采购代理机构")
-CONSTRUCTION_SIGNALS = ("工程建设", "施工", "勘察", "设计招标", "监理", "工程项目")
-
-# 这些表达要求模型结合多条规则判断法律后果，不能被“出现了法规名和条号”误导到
-# 原文快速路径。列表宁可保守一些：漏走快速路径只影响速度，误走则可能影响结论。
-LEGAL_JUDGMENT_MARKERS = (
-    "合法",
-    "违法",
-    "合规",
-    "能否",
-    "可以否决",
-    "是否有效",
-    "有效吗",
-    "合理吗",
-    "如何处理",
-    "怎么办",
-    "责任",
-    "处罚",
-    "救济",
-    "投诉",
-    "质疑",
-)
+def contextual_question(question: str, history: list[dict[str, str]] | None = None) -> str:
+    """只在显式承接上题时使用最近一条用户问题，旧助手回答永远不是证据。"""
+    if not history or not re.match(r"^(那|那么|上述|刚才|这个|该项目|补充|我是|我们是|项目属于)", question):
+        return question
+    previous = next((row["content"] for row in reversed(history) if row.get("role") == "user"), "")
+    current_refs = references(question)
+    if any(ref["document_title"] or ref["document_number"] for ref in current_refs):
+        return question  # 新的明确引用覆盖上题，不能把上题条号也作为本轮请求。
+    previous_refs = references(previous)
+    if current_refs and not any(ref["document_title"] or ref["document_number"] for ref in previous_refs):
+        for row in reversed(history[:-1]):
+            if row.get("role") == "user" and any(ref["document_title"] or ref["document_number"] for ref in references(row["content"])):
+                previous_refs = references(row["content"])
+                break
+    titles = list(dict.fromkeys(f"《{ref['document_title']}》" if ref["document_title"] else ref["document_number"] for ref in previous_refs if ref["document_title"] or ref["document_number"]))
+    if current_refs and len(titles) == 1:
+        return f"{titles[0]}{question}"
+    return f"{previous[:1000]}\n补充问题：{question}" if previous else question
 
 
-def is_safe_exact_reference_question(question: str, analysis: IntentAnalysis) -> bool:
-    """判断问题是否只是“明确法规 + 明确条号”的低风险原文查询。
-
-    快速路径必须同时满足：只有一个正式引用、法规名和条号都存在、不含评价/后果
-    表达。最终是否进入快速路径还要等精确工具返回等值命中结果后再次确认。
-    """
-
-    references = analysis.exact_references
-    return (
-        analysis.primary_intent == "exact_reference"
-        and len(references) == 1
-        and bool(references[0].document_title.strip())
-        and bool(references[0].article_number.strip())
-        and not any(marker in question for marker in LEGAL_JUDGMENT_MARKERS)
-        and not any(marker in question for marker in ("以及", "同时", "分别", "比较"))
+def plan_question(question: str) -> QueryPlan:
+    refs = [ExactReference(**row) for row in references(question)]
+    government = any(word in question for word in ("政府采购", "采购人", "财政部门", "质疑"))
+    construction_terms = ("工程建设", "工程项目", "工程招标", "政府采购工程", "施工", "勘察", "设计招标", "招标投标法")
+    construction = any(word in question for word in construction_terms)
+    if "\n补充问题：" in question:
+        supplement = question.rsplit("\n补充问题：", 1)[1]
+        government_clarified = "政府采购" in supplement and not re.search(r"不(?:属于|适用|是).{0,3}政府采购", supplement)
+        construction_clarified = any(word in supplement for word in construction_terms)
+        if government_clarified and not construction_clarified:
+            government, construction = True, False
+        elif construction_clarified and not government_clarified:
+            government, construction = False, True
+    domain = "government_procurement" if government and not construction else "construction_bidding" if construction and not government else "uncertain"
+    plan = QueryPlan(normalized_question=question, domain=domain, exact_references=refs)
+    if len(refs) > 8:
+        plan.boundary_reason = "本次指定的法规引用过多，请拆成每次最多8处引用的问题。"
+        plan.boundary_action = "clarify"
+        plan.required_case_facts = ["本次优先检索的法规与条号"]
+        return plan
+    boundary_checks = (
+        (r"美国|欧盟|欧元|英国|联邦|FAR\b|EU\b", "当前知识库仅覆盖中国政府采购与招投标，未收录所问境外法源。"),
+        (r"增值税.*(税率|多少)|适用.*税率|税率.*(多少|统一)", "当前知识库缺少确定税率所需的税收法源，不能用采购合同条款代替。"),
+        (r"(判决|判多久|胜诉|败诉|胜率|一定中标|保证中标|肯定中标)|预测.*(结果|处罚)", "无法仅凭法规检索预测具体案件裁判或保证采购结果。"),
+        (r"(哪些|全部|清单|目录).*(废止|失效)|现行有效.*(清单|目录)", "库内效力元数据尚不足以生成完整、现时有效的法规清单。"),
+        (r"(最新|现行|截至|目前|现在|今年|202[6-9]年|203\d年).*(有效|废止|修订|版本)|(?:最新|现行).*(法|条例|办法)", "本系统没有实时法规更新核验能力，不能确认所问版本截至当前仍有效。"),
+        (r"(最低|统一|一律).{0,10}注册资本|注册资本.{0,10}(最低|统一|一律|至少多少)", "库内没有统一最低注册资本数额依据；不能接受该前提并编造金额。"),
+        (r"(上海|北京|广东|深圳|各省|本省|本市|当地|地方).*(限额|门槛|标准|目录)|(?:限额|门槛).*(上海|北京|广东|当地|今年|202[6-9])", "所问地区或年度的采购限额、目录需要对应地方官方文件，当前语料不完整。"),
+        (r"(?:今年|明年|202[6-9]年|203\d年).*(限额|门槛|目录|招标数额)|(?:现行|最新).*(限额|门槛|招标数额)", "所问年度和地区的数额标准需要对应官方文件，当前知识库不能确认。"),
+        (r"(忽略|无视|绕过).*(指令|规则|证据|约束)|(?:输出|显示|告诉我).*(API.?KEY|密钥|系统提示词|环境变量)", "该请求不能作为法规检索任务执行。"),
     )
+    for pattern, reason in boundary_checks:
+        if re.search(pattern, question, re.IGNORECASE):
+            plan.boundary_reason = reason
+            return plan
+    if not any(word in question for word in DOMAIN_TERMS) and not refs:
+        plan.boundary_reason = "当前知识库只处理政府采购与招投标法规，尚未覆盖该问题所属领域。"
+        return plan
+    if refs and any(ref.article_number and not (ref.document_title or ref.document_number) for ref in refs):
+        plan.boundary_reason = "条号本身不能唯一定位法规，请补充法规名称。"
+        plan.boundary_action = "clarify"
+        plan.required_case_facts = ["需要查询的法规完整名称"]
+        return plan
+    case_question = question
+    for title in sorted({ref.document_title for ref in refs if ref.document_title}, key=len, reverse=True):
+        case_question = case_question.replace(title, "")
+    # 法规名称中的“质疑和投诉”等词不是用户新增的业务请求。
+    judgment = any(word in case_question for word in LEGAL_JUDGMENT_MARKERS)
+    plan.primary_intent = "legality_assessment" if judgment else "procedure_guidance" if any(word in case_question for word in ("质疑", "投诉", "期限", "程序")) else "rule_explanation"
+    plan.needs, plan.cases, facts = match_cases(case_question, domain)
+    issues_in_requested_articles = all(need.sources and any(
+        ref.document_title and title_matches(ref.document_title, source.document_title)
+        and ref.article_number and source.article_number
+        and article_value(ref.article_number) == article_value(source.article_number)
+        for ref in refs for source in need.sources) for need in plan.needs)
+    # 附带条号不等于只查原文；新增材料、投诉等争点不能被快速路径吞掉。
+    if refs and any(ref.article_number for ref in refs) and not judgment and issues_in_requested_articles and not re.search(r"起诉|诉讼|赔偿|时效|救济|后果|如何计算|截止|哪一天", question):
+        plan.primary_intent = "exact_reference"
+        plan.safe_exact = True
+    if len(plan.needs) > 6:
+        plan.boundary_reason = "本次问题涉及超过6个待核验争点，请按资格、评审、救济等主题拆分提问。"
+        plan.boundary_action = "clarify"
+        plan.required_case_facts = ["本次优先处理的争点"]
+        return plan
+    specific_case = judgment or bool(re.search(r"我们|我司|本项目|该项目|被否决|被拒绝|怎么维权|截止日期|最后一天|哪一天", question))
+    if specific_case:
+        plan.required_case_facts = facts
+        if domain == "uncertain":
+            plan.required_case_facts = list(dict.fromkeys(["项目属于政府采购还是工程建设招标", *facts]))[:6]
+        if re.search(r"截止日期|最后一天|哪一天", question):
+            plan.required_case_facts = list(dict.fromkeys([*plan.required_case_facts, "相关文书收到日期与适用的官方工作日历"]))[:6]
+    if not plan.needs and not plan.safe_exact:
+        from agent.schemas import EvidenceNeed
+        plan.needs = [EvidenceNeed(issue="问题所需的一般规则", query=question)]
+    return plan
 
 
-def deterministic_intent(question: str) -> IntentAnalysis:
-    """模型不可用时仍能给出保守、可解释的意图和首轮查询。"""
-
-    titles = TITLE_PATTERN.findall(question)
-    articles = [match.group(0).replace(" ", "") for match in ARTICLE_PATTERN.finditer(question)]
-    numbers = [match.group(0) for match in DOCUMENT_NUMBER_PATTERN.finditer(question)]
-    # 用户常省略书名号，例如“政府采购法第二十二条”。只从紧邻条号的文本中
-    # 提取标题，不扫描或猜测问题中没有出现的其他法规。
-    if not titles:
-        inline_title = re.search(
-            r"((?:中华人民共和国)?[\u4e00-\u9fff]{2,24}?(?:法实施条例|实施条例|条例|办法|规定|法))"
-            r"(?=\s*第\s*[一二三四五六七八九十百千万零〇两0-9]+\s*条)",
-            question,
-        )
-        if inline_title:
-            title = re.sub(r"^(?:请问|根据|依照|关于)", "", inline_title.group(1))
-            if title:
-                titles = [title]
-    references: list[ExactReference] = []
-    reference_count = max(len(titles), len(articles), len(numbers), 0)
-    for index in range(reference_count):
-        references.append(
-            ExactReference(
-                document_title=titles[index] if index < len(titles) else "",
-                article_number=articles[index] if index < len(articles) else "",
-                document_number=numbers[index] if index < len(numbers) else "",
-            )
-        )
-
-    government = [signal for signal in GOVERNMENT_SIGNALS if signal in question]
-    construction = [signal for signal in CONSTRUCTION_SIGNALS if signal in question]
-    if government and not construction:
-        domain = "government_procurement"
-        domain_signals = government
-    elif construction and not government:
-        domain = "construction_bidding"
-        domain_signals = construction
-    else:
-        domain = "uncertain"
-        domain_signals = [*government, *construction]
-
-    legality = any(marker in question for marker in LEGAL_JUDGMENT_MARKERS)
-    procedure = any(marker in question for marker in ("流程", "程序", "期限", "如何办理", "怎么做"))
-    scope = any(marker in question for marker in ("是否适用", "适用范围", "效力", "废止", "现行有效"))
-    legal_markers = (
-        "招标", "投标", "采购", "供应商", "评标", "中标", "法规", "法律", "条例", "办法", "第"
-    )
-    clearly_unrelated = any(
-        marker in question for marker in ("天气", "菜谱", "电影推荐", "写代码", "数学题", "旅游攻略")
-    ) and not any(marker in question for marker in legal_markers)
-    if clearly_unrelated:
-        intent = "out_of_scope"
-    elif references:
-        intent = "exact_reference"
-    elif legality:
-        intent = "legality_assessment"
-    elif procedure:
-        intent = "procedure_guidance"
-    elif scope:
-        intent = "scope_applicability"
-    else:
-        intent = "rule_explanation"
-
-    terminology: dict[str, str] = {}
-    normalized = question
-    if "甲方" in question:
-        terminology["甲方"] = "采购人或招标人，具体取决于项目场景"
-        normalized = question.replace("甲方", "采购人或招标人")
-
-    if legality:
-        issues = [
-            "招标或采购文件设置该项要求的权限及其与项目特点、实际需要的关联",
-            "该项要求是否构成不合理限制排斥或差别待遇",
-            "未满足该项要求时能否依法作为否决投标或无效响应的依据",
-        ]
-    elif "内部制度" in question:
-        issues = [
-            "内部制度能否作为对投标人或供应商的文件要求",
-            "相关要求是否公开、明确、与项目相关且可以验证",
-            "相关要求是否违法形成资格、评分或否决条件",
-        ]
-    else:
-        issues = [normalized]
-
-    required_facts: list[str] = []
-    if domain == "uncertain" and any(term in question for term in ("招标", "投标", "甲方")):
-        required_facts.append("项目属于政府采购还是工程建设招标")
-    if legality:
-        required_facts.append("招标文件或采购文件中该项要求及法律后果的完整原文")
-
-    return IntentAnalysis(
-        in_scope=not clearly_unrelated,
-        primary_intent=intent,
-        normalized_question=normalized,
-        domain=domain,
-        domain_signals=domain_signals,
-        terminology_map=terminology,
-        legal_issues=issues,
-        required_case_facts=list(dict.fromkeys(required_facts)),
-        exact_references=references,
-        initial_queries=[normalized, *issues][:5],
-        reason_summary="确定性规则根据正式引用、评价词和领域信号生成",
-    )
+def deterministic_intent(question: str) -> QueryPlan:
+    return plan_question(question)
 
 
-def intent_prompt(question: str, fallback: IntentAnalysis) -> str:
-    """要求模型只返回可公开的结构化分析，不输出隐藏思维链。"""
-
-    return (
-        "你是政府采购与招标投标法律检索 Agent 的意图分析器，不回答法律结论。"
-        "只输出 JSON 对象，字段必须符合：in_scope、primary_intent、secondary_intents、"
-        "normalized_question、domain、domain_signals、terminology_map、legal_issues、"
-        "required_case_facts、exact_references、initial_queries、reason_summary。\n"
-        "primary_intent只能是exact_reference、rule_explanation、legality_assessment、"
-        "procedure_guidance、scope_applicability、multi_issue、out_of_scope之一。"
-        "domain只能是government_procurement、construction_bidding、uncertain。\n"
-        "规则：没有政府采购/供应商/财政部门或工程建设/施工/勘察设计等明确信号时，"
-        "不能仅凭招标文件、投标文件、甲方认定领域；甲方应映射为采购人或招标人候选。"
-        "合法性问题要拆出设置权限与项目关联性、公平竞争限制、法律后果等必要争点。"
-        "用户明确写出的法规、条号和文号必须原样放入exact_references，不能凭记忆新增。"
-        "reason_summary只写一句可公开决策摘要。\n"
-        f"确定性预分析：{fallback.model_dump_json(ensure_ascii=False)}\n"
-        f"用户问题：{question}"
-    )
-
-
-def compact_keywords(values: list[str], limit: int = 220) -> str:
-    """把争点转成关键词串，去掉问句虚词但保留数字和法律动作。"""
-
-    text = " ".join(values)
-    text = re.sub(r"[？?，。；：、（）()]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:limit]
+def is_safe_exact_reference_question(question: str, analysis: QueryPlan) -> bool:
+    return analysis.safe_exact and not analysis.boundary_reason

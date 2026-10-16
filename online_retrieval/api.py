@@ -15,30 +15,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 
 from agent.config import get_agent_settings
+from agent.schemas import HistoryMessage
 from agent.service import AgentBusyError, agent_health, run_agent
-from online_retrieval.answerer import answer_question
-from shared.chroma_store import get_collection, get_parent_collection
-from shared.config import (
-    EMBEDDING_BACKEND,
-    EMBEDDING_MODEL_PATH,
-    RERANKER_BACKEND,
-    RERANKER_MODEL_PATH,
-)
+from online_retrieval.retriever import LegalRetriever
+from shared.store import IndexUnavailable, LegalStore
 
 
-# Web 页面与 API 由同一个 FastAPI 进程提供。这样浏览器访问页面时不会遇到
-# 跨域问题，也不需要为这个简历项目额外安装 Node.js 或前端构建工具。
+# Web 页面与 API 同进程提供，前端无需构建工具。
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 LOGGER = logging.getLogger("jurisrag.api")
 REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 MAX_QUESTION_CHARS = get_agent_settings().max_question_chars
 
-app = FastAPI(title="招标采购法规知识库 RAG", version="0.4.0")
+app = FastAPI(title="JurisRAG 轻量法律检索 Agent", version="1.0.0")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 
 
 class QuestionRequest(BaseModel):
     """Request body sent by the browser or an API client."""
+
+    model_config = {"extra": "forbid"}
 
     question: str = Field(
         min_length=1,
@@ -62,6 +58,7 @@ class AgentQuestionRequest(QuestionRequest):
     """Agent 模式请求；debug_trace=false 时可以隐藏逐节点事件。"""
 
     debug_trace: bool = Field(default=True, description="是否返回可公开的 Agent 执行事件")
+    history: list[HistoryMessage] = Field(default_factory=list, max_length=6, description="最近对话，仅用于承接问题，不能充当法律证据")
 
 
 @app.middleware("http")
@@ -93,36 +90,8 @@ async def attach_request_context(request: Request, call_next):
 
 
 def _knowledge_health() -> dict[str, object]:
-    """检查固定 RAG 的必要依赖；故障时返回结构化状态而不是直接抛 500。"""
-
-    try:
-        child_collection = get_collection()
-        parent_collection = get_parent_collection()
-        child_count = child_collection.count()
-        parent_count = parent_collection.count()
-        index_ready = child_count > 0 and parent_count > 0
-        error = None
-    except Exception as exc:
-        child_count = 0
-        parent_count = 0
-        index_ready = False
-        # 健康接口只暴露异常类型，详细堆栈留在服务日志，避免泄漏磁盘路径。
-        error = type(exc).__name__
-        LOGGER.exception("knowledge_health_failed")
-    embedding_ready = EMBEDDING_BACKEND == "hash" or EMBEDDING_MODEL_PATH.exists()
-    reranker_ready = RERANKER_BACKEND == "none" or RERANKER_MODEL_PATH.exists()
-    ready = index_ready and embedding_ready and reranker_ready
-    return {
-        "status": "ok" if ready else "unavailable",
-        "ready": ready,
-        "indexed_chunks": child_count,
-        "indexed_children": child_count,
-        "indexed_parents": parent_count,
-        "index_ready": index_ready,
-        "embedding_ready": embedding_ready,
-        "reranker_ready": reranker_ready,
-        "error_type": error,
-    }
+    """轻量模式只依赖已生成的 SQLite，不依赖模型或 MCP 进程。"""
+    return LegalRetriever().health()
 
 
 @app.get("/", include_in_schema=False)
@@ -141,24 +110,14 @@ def liveness() -> dict[str, object]:
 
 @app.get("/health")
 def health() -> dict[str, object]:
-    """Return index and local-model readiness for a deployment check.
-
-    仅检查 Chroma 数量会漏掉一种常见问题：索引可以打开，但查询时需要的
-    Embedding 或 Reranker 模型文件已经被移动。这里同时检查模型目录，让 Web
-    页面在用户提问之前就能显示真实运行状态。
-    """
+    """检查索引和已启用的可选模型文件；不触发模型下载或网络调用。"""
 
     return _knowledge_health()
 
 
 @app.get("/ready")
 async def readiness() -> JSONResponse:
-    """聚合固定 RAG 和 Agent 依赖，核心索引不可用时返回 HTTP 503。
-
-    MCP/LLM 不可用但固定 RAG 正常时仍返回 HTTP 200 和 ``degraded``，因为系统
-    可以提供有明确标记的基线服务；调用方可根据 ``agent.agent_ready`` 决定是否
-    暂时隐藏 Agent 模式。
-    """
+    """检索依赖缺失返回503；仅关闭Agent时仍能提供基础RAG。"""
 
     knowledge = _knowledge_health()
     agent = await agent_health()
@@ -175,20 +134,15 @@ async def readiness() -> JSONResponse:
 
 
 @app.post("/api/v1/questions")
-def ask_question(request: QuestionRequest) -> dict[str, object]:
+async def ask_question(request: QuestionRequest, http_request: Request) -> dict[str, object]:
     """Answer one question and expose every evidence citation."""
 
-    try:
-        return answer_question(request.question, request.top_k)
-    except (ValueError, RuntimeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"问答处理失败: {exc}") from exc
+    return await _answer(request, http_request, mode="rag")
 
 
 @app.get("/api/v1/agent/health")
 async def get_agent_health() -> dict[str, object]:
-    """检查 Agent 配置、回答模型和九个 MCP 工具是否就绪。"""
+    """返回轻量Agent、可选模型配置及请求容量。"""
 
     return await agent_health()
 
@@ -197,13 +151,20 @@ async def get_agent_health() -> dict[str, object]:
 async def ask_agent_question(request: AgentQuestionRequest, http_request: Request) -> dict[str, object]:
     """运行受约束 Agent；固定 RAG 接口继续保留用于基线与降级。"""
 
+    return await _answer(request, http_request, mode="agent")
+
+
+async def _answer(request: QuestionRequest, http_request: Request, *, mode: str) -> dict[str, object]:
     try:
+        kwargs = {"mode": mode, "request_id": http_request.state.request_id}
+        if isinstance(request, AgentQuestionRequest):
+            kwargs["history"] = [message.model_dump() for message in request.history]
         result = await run_agent(
             request.question,
             request.top_k,
-            request_id=http_request.state.request_id,
+            **kwargs,
         )
-        if not request.debug_trace:
+        if isinstance(request, AgentQuestionRequest) and not request.debug_trace:
             result.get("agent_trace", {}).pop("events", None)
         return result
     except AgentBusyError as exc:
@@ -212,13 +173,35 @@ async def ask_agent_question(request: AgentQuestionRequest, http_request: Reques
             detail=str(exc),
             headers={"Retry-After": "2"},
         ) from exc
+    except IndexUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
-        LOGGER.exception(
-            "agent_request_failed request_id=%s", http_request.state.request_id
+        LOGGER.error(
+            "question_failed request_id=%s error_type=%s", http_request.state.request_id, type(exc).__name__
         )
         raise HTTPException(
             status_code=502,
-            detail=f"Agent 问答暂不可用，请稍后重试（request_id={http_request.state.request_id}）",
+            detail=f"问答暂不可用，请稍后重试（request_id={http_request.state.request_id}）",
         ) from exc
+
+
+@app.get("/api/v1/cases")
+def list_cases() -> dict[str, object]:
+    """向页面展示支持的业务场景，不将场景规则当作法规正文。"""
+    from agent.cases import RULES
+    return {"domain": "政府采购与招投标", "cases": [{"id": rule.key, "name": rule.label, "issue": rule.issue} for rule in RULES]}
+
+
+@app.get("/api/v1/evidence/{evidence_id}")
+def full_evidence(evidence_id: str) -> dict[str, object]:
+    if len(evidence_id) > 300:
+        raise HTTPException(status_code=400, detail="证据ID过长")
+    try:
+        rows = LegalStore().fetch([evidence_id], "parent")
+    except IndexUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    if not rows:
+        raise HTTPException(status_code=404, detail="没有找到该证据")
+    return rows[0]

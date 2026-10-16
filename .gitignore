@@ -6,6 +6,7 @@
 # Python virtual environments and generated cache files.
 .venv/
 .venv-eval/
+.venv-lite/
 __pycache__/
 *.py[cod]
 .pytest_cache/

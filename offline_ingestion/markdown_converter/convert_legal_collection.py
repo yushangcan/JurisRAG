@@ -5,8 +5,8 @@ This command is intentionally separate from ``convert_corpus.py``:
 1. ``convert_corpus.py`` serves the RAG project's current main manifest.
 2. This file reads ``data/source/legal_collection`` and writes matching
    structured Markdown to ``data/processed/legal_collection``.
-3. Conversion does not build embeddings or write to Chroma.  A human can audit
-   the Markdown first and decide later which files enter the vector index.
+3. Conversion does not build the retrieval index. A human can audit the
+   Markdown first and decide later which files enter the index.
 
 The implementation is verbose on purpose: a beginner should be able to follow
 the path from checksum verification, through extraction and legal parsing, to

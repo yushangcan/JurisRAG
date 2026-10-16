@@ -59,7 +59,7 @@ class SourceDocument:
         )
 
     def to_metadata(self) -> dict[str, str]:
-        """Return Chroma-compatible string metadata (Chroma rejects ``None``)."""
+        """将可选值统一成字符串，保持来源和派生文本的元数据格式一致。"""
 
         values = asdict(self)
         return {key: str(value or "") for key, value in values.items()}
@@ -80,7 +80,7 @@ class TextChunk:
     document: SourceDocument
     markdown_file: str = ""
     # ``node_type`` 用来区分参与检索的 child 与只负责回填全文的 parent。
-    # 两者分库存储，但保留字段后，调试检索结果时仍能一眼看出数据角色。
+    # 同表保留角色，父块用于回填，子块用于检索。
     node_type: str = "child"
     chapter: str = ""
     article_number: str = ""

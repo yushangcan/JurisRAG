@@ -1,82 +1,79 @@
-"""证据去重、父子选择和前端引用转换。"""
-
+"""引用转换与确定性事实检查；模型的归纳不能替代原文证据。"""
 from __future__ import annotations
-
+import re
 from typing import Any
 
+from shared.legal_text import DOCUMENT_NUMBER_PATTERN, article_value, number_key, title_matches
 
-def merge_child_results(
-    existing: dict[str, dict[str, Any]],
-    results: list[dict[str, Any]],
-    limit: int,
-) -> tuple[dict[str, dict[str, Any]], int]:
-    """按 child ID 去重，并合并同一证据命中的检索通道。"""
-
-    merged = {key: dict(value) for key, value in existing.items()}
-    new_count = 0
-    for row in results:
-        chunk_id = str(row.get("chunk_id", "")).strip()
-        if not chunk_id:
-            continue
-        if chunk_id not in merged:
-            merged[chunk_id] = dict(row)
-            new_count += 1
-        else:
-            old_channels = merged[chunk_id].get("retrieval_channels", [])
-            new_channels = row.get("retrieval_channels", [])
-            merged[chunk_id]["retrieval_channels"] = list(
-                dict.fromkeys([*old_channels, *new_channels])
-            )
-    # Python 字典保留插入顺序；工具已经按相关性排序，先到的证据优先保留。
-    return dict(list(merged.items())[:limit]), new_count
+_QUANTIFIED_FACT_PATTERN = re.compile(
+    r"[一二三四五六七八九十百千万零〇两0-9]+(?:\.\d+)?(?:\s*[—–-]\s*[一二三四五六七八九十百千万零〇两0-9]+)?\s*"
+    r"(?:个工作日|工作日|万元|亿元|分钟|小时|页|天|日|年|元|%|％|倍|人)|[一二三四五六七八九十百0-9]+分之[一二三四五六七八九十百0-9]+"
+)
+_ARTICLE_REFERENCE_PATTERN = re.compile(r"第\s*[一二三四五六七八九十百千万零〇两0-9]+\s*条")
 
 
-def merge_parent_results(
-    existing: dict[str, dict[str, Any]],
-    results: list[dict[str, Any]],
-    limit: int,
-) -> tuple[dict[str, dict[str, Any]], int]:
-    merged = {key: dict(value) for key, value in existing.items()}
-    new_count = 0
-    for row in results:
-        parent_id = str(row.get("parent_id", "")).strip()
-        if not parent_id:
-            continue
-        if parent_id not in merged:
-            merged[parent_id] = dict(row)
-            new_count += 1
-    return dict(list(merged.items())[:limit]), new_count
-
-
-def select_parent_ids(
-    child_evidence: dict[str, dict[str, Any]],
-    limit: int,
+def _unsupported_generated_facts(
+    answer: str,
+    question: str,
+    evidence_text: str,
 ) -> list[str]:
-    """按 child 排名选取不同 parent，防止同一法条重复占满上下文。"""
+    """找出问题和证据中都没有出现的量化事实或占位内容。
 
-    selected: list[str] = []
-    for row in child_evidence.values():
-        parent_id = str(row.get("parent_id", "")).strip()
-        if parent_id and parent_id not in selected:
-            selected.append(parent_id)
-        if len(selected) >= limit:
-            break
-    return selected
+    这不是完整的事实核验器，但能拦截法律回答中风险很高的“模型自创期限、
+    金额、页数区间”和 ``XXX`` 占位文号。法条编号由引用约束负责。
+    """
 
-
-def answer_evidence(
-    parent_evidence: dict[str, dict[str, Any]],
-    child_evidence: dict[str, dict[str, Any]],
-    limit: int,
-) -> list[dict[str, Any]]:
-    """回答优先用完整 parent；MCP 父块失败时显式降级到 child。"""
-
-    values = list(parent_evidence.values()) or list(child_evidence.values())
-    return values[:limit]
+    supported_text = f"{question}\n{evidence_text}".replace(" ", "")
+    unsupported = [
+        match.group(0)
+        for match in _QUANTIFIED_FACT_PATTERN.finditer(answer)
+        if match.group(0).replace(" ", "") not in supported_text
+    ]
+    if "XXX" in answer.upper():
+        unsupported.append("XXX占位内容")
+    if "封闭式列举" in answer and "封闭式列举" not in evidence_text:
+        unsupported.append("证据未支持否决情形属于封闭式列举")
+    return list(dict.fromkeys(unsupported))
 
 
-def evidence_id(row: dict[str, Any]) -> str:
-    return str(row.get("parent_id") or row.get("chunk_id", ""))
+def _compact_reference(value: str) -> str:
+    """删除引用中的空格和常见书名装饰，用于同一性比较。"""
+
+    return re.sub(r"[\s《》]", "", value).lower()
+
+
+def _unsupported_legal_references(
+    answer: str,
+    evidence: list[dict[str, Any]],
+) -> list[str]:
+    """检查回答中的法规标题和条号是否真实存在于本次引用集合。"""
+
+    allowed_titles = {
+        _compact_reference(str(item.get("metadata", {}).get("title", "")))
+        for item in evidence
+    }
+    allowed_articles = {
+        _compact_reference(str(item.get("metadata", {}).get("article_number", "")))
+        for item in evidence
+        if item.get("metadata", {}).get("article_number")
+    }
+    unsupported: list[str] = []
+    for title in re.findall(r"《([^》]+)》", answer):
+        compact_title = _compact_reference(title)
+        if not any(
+            title_matches(compact_title, allowed)
+            for allowed in allowed_titles
+            if allowed
+        ):
+            unsupported.append(f"未引用法规《{title}》")
+    for article in _ARTICLE_REFERENCE_PATTERN.findall(answer):
+        if article_value(article) not in {article_value(value) for value in allowed_articles}:
+            unsupported.append(f"未引用条号{article}")
+    allowed_numbers = {number_key(item.get("metadata", {}).get("document_number", "")) for item in evidence}
+    for match in DOCUMENT_NUMBER_PATTERN.finditer(answer):
+        if number_key(match.group(0)) not in allowed_numbers:
+            unsupported.append("未引用文号" + match.group(0))
+    return list(dict.fromkeys(unsupported))
 
 
 def citation_from_evidence(row: dict[str, Any], supports_issues: list[str]) -> dict[str, Any]:
@@ -85,7 +82,7 @@ def citation_from_evidence(row: dict[str, Any], supports_issues: list[str]) -> d
     metadata = row.get("metadata", {})
     text = str(row.get("text", ""))
     return {
-        "evidence_id": evidence_id(row),
+        "evidence_id": str(row.get("parent_id") or row.get("chunk_id", "")),
         "document_title": metadata.get("title", row.get("title", "")),
         "category": metadata.get("category", ""),
         "article_or_position": (
@@ -112,7 +109,7 @@ def citation_from_evidence(row: dict[str, Any], supports_issues: list[str]) -> d
         "retrieval_channels": row.get("retrieval_channels", []),
         "exact_matches": row.get("exact_matches", []),
         "hybrid_score": row.get("scores", {}).get("hybrid_score", 0.0),
-        "reranker_score": row.get("scores", {}).get("reranker_score"),
+        "reranker_score": row.get("reranker_score"),
         "supports_issues": supports_issues,
     }
 

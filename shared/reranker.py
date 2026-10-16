@@ -20,8 +20,7 @@ from shared.config import RERANKER_BACKEND, RERANKER_MODEL_PATH
 def _runtime():
     """加载 tokenizer 和 ONNX 会话，并返回模型实际需要的输入名称。
 
-    模型文件缺失时直接抛出带路径的异常。在线检索层会记录这次失败并退回
-    混合召回顺序，因此接口仍可用，但不会把“未精排”伪装成“已精排”。
+    显式启用重排后需要模型文件完整；健康检查会报告缺失，查询不会冒充已精排。
     """
 
     model_file = RERANKER_MODEL_PATH / "onnx" / "model_quantized.onnx"
@@ -90,7 +89,7 @@ def rerank_children(
 ) -> list[dict[str, Any]]:
     """给 child 候选加入 ``reranker_score`` 并返回新的排序。
 
-    法规名+条号或文号属于确定性强信号。``exact_score >= 16`` 的候选被
+    法规名+条号或文号属于确定性强信号。精确命中的候选被
     放在普通语义候选之前，避免 Cross-Encoder 把准确编号降级；同一层内再
     按 Reranker 分数排序，混合召回分数作为稳定的并列裁决。
     """
@@ -114,9 +113,9 @@ def rerank_children(
     return sorted(
         enriched,
         key=lambda row: (
-            -int(float(row.get("exact_score", 0.0)) >= 16.0),
+            -int("exact" in row.get("retrieval_channels", [])),
             -float(row.get("reranker_score", float("-inf"))),
-            -float(row.get("hybrid_score", 0.0)),
+            -float(row.get("score", 0.0)),
             str(row.get("chunk_id", "")),
         ),
     )

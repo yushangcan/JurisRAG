@@ -15,7 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
-from offline_ingestion.build_index import load_corpus_entries
+from offline_ingestion.corpus import load_corpus_entries
 from offline_ingestion.chunker import build_markdown_nodes
 from shared.config import CHUNK_OVERLAP, CHUNK_SIZE, PROJECT_ROOT
 

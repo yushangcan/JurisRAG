@@ -1,12 +1,12 @@
 """CLI: convert every manifest source into structured Markdown.
 
 Run this separately from indexing so a human can audit ``data/processed``
-before any derived text enters Chroma.
+before any derived text enters the retrieval index.
 """
 
 from __future__ import annotations
 
-from offline_ingestion.build_index import load_manifest, verify_file_hash
+from offline_ingestion.corpus import load_manifest, verify_file_hash
 from offline_ingestion.markdown_converter.converter import convert_document, markdown_filename
 from shared.config import PROCESSED_MARKDOWN_DIR, RAW_LAWS_DIR
 

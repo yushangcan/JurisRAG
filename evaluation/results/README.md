@@ -6,6 +6,7 @@
 
 ## 当前报告
 
+- [current_codez_ragas_20261017.md](current_codez_ragas_20261017.md)：当前 CodeZ 模型版的30题实测，固定 RAG 与 Agent 并列；21道有依据题计算五项真实 RAGAS 指标，9道边界题检查拒答。报告包含有效评分数、回退、Token和配对差值，以报告状态为准。
 - [lightweight_agent_v2.md](lightweight_agent_v2.md)：既有30题开发回归，其中21题有库内依据、9题是范围或能力边界。
 - [lightweight_gold50_v2.md](lightweight_gold50_v2.md)：既有50题检索开发回归。
 - 两份报告都保存逐题状态、最终引用 Recall、停止原因、题集/实现/索引 SHA-256 与运行时间。
@@ -22,6 +23,18 @@ python -m evaluation.run_lightweight_eval --dataset evaluation/datasets/legal_ra
 ~~~
 
 --with-llm 会明确调用已配置模型。没有模型时直接报错，不假装完成；调用失败或归纳校验失败会记录 model_run_degraded。该选项不自动提供回答质量裁判。
+
+当前版本 RAGAS 使用单独的评测环境，不给主服务增加依赖。先安装 `evaluation/requirements-eval.txt`，并准备本地 `BAAI/bge-small-zh-v1.5` ONNX 权重；`--embedding-path` 指定含 `model_optimized.onnx` 的目录。问题相似度使用真实中文语义向量，不使用字符 hash。
+
+~~~powershell
+.\.venv-lite\Scripts\python.exe -m venv .venv-eval
+.\.venv-eval\Scripts\python.exe -m pip install -r evaluation/requirements-eval.txt
+.\.venv-lite\Scripts\python.exe -u -X utf8 -m evaluation.run_current_ragas --phase generate
+.\.venv-eval\Scripts\python.exe -u -X utf8 -m evaluation.run_current_ragas --phase score
+.\.venv-lite\Scripts\python.exe -u -X utf8 -m evaluation.run_current_ragas --phase report
+~~~
+
+生成和裁判都会调用本机已配置模型并产生供应商用量。答案按题保存，评分按子调用保存；相同签名重跑复用缓存，`--retry-failed` 仅重试失败评分。要做独立重复实验需指定新的 `--output`，不能覆盖既有业务答案。无上下文与失败的指标不补零，报告同时显示配对有效题数；同模型裁判和开发集偏差必须一并解释。
 
 ## 指标边界
 

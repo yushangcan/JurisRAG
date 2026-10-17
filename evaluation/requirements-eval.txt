@@ -1,0 +1,7 @@
+# 安装到独立 .venv-eval；主服务不依赖 RAGAS / LangChain。
+-r ../requirements.txt
+ragas==0.4.3
+openai==2.54.0
+instructor==1.16.0
+langchain-community==0.3.31
+fastembed==0.7.4

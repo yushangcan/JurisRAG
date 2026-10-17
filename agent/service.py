@@ -67,7 +67,7 @@ def _response(plan: QueryPlan, trace: dict, request_id: str, *, answer: str, evi
         "answer": answer, "status": status, "answerability": "insufficient" if insufficient else "conditional" if status == "needs_clarification" else "direct",
         "insufficient_evidence": insufficient, "refusal_reason": reason if insufficient else None,
         "missing_user_facts": plan.required_case_facts, "clarifying_questions": plan.required_case_facts if status == "needs_clarification" else [],
-        "citations": [citation_from_evidence(row, [need.issue for need in plan.needs if LegalRetriever.supports(need, row)]) for row in evidence],
+        "citations": [citation_from_evidence(row, row.get("supports_issues", [need.issue for need in plan.needs if LegalRetriever.supports(need, row)])) for row in evidence],
         "source_count": len({row["title"] for row in evidence}), "source_titles": list(dict.fromkeys(row["title"] for row in evidence)),
         "intent": plan.primary_intent, "domain": plan.domain, "cases": plan.cases,
         "legal_issues": [need.issue for need in plan.needs], "generation_mode": mode.replace("agent_", "rag_") if trace.get("mode") == "rag" else mode,
@@ -91,6 +91,18 @@ async def _execute(question: str, top_k: int, history: list | None, retriever: L
         except (ValueError, RuntimeError):
             model = None
             trace["warnings"].append("模型配置不可用，本次使用法规原文回答")
+    trace["controller"] = "exact_reference" if plan.safe_exact else "fixed_rag" if mode == "rag" else "rule_workflow"
+    if mode == "agent" and model is not None and not plan.safe_exact:
+        from agent.loop import run_model_loop
+        trace["controller"] = "llm_loop"
+        baseline_plan = plan.model_copy(deep=True)
+        outcome = await run_model_loop(plan, top_k, retriever, model, settings, trace)
+        if not outcome.fallback:
+            return _response(plan, trace, request_id, answer=outcome.answer, evidence=outcome.evidence,
+                             reason=outcome.reason, mode=outcome.mode, clarification=outcome.clarification)
+        plan = baseline_plan
+        model = None
+        trace["controller"] = "rule_fallback"
     references = list(plan.exact_references)
     if mode == "agent" and not plan.safe_exact:
         references.extend(source for need in plan.needs for source in need.sources)
@@ -101,7 +113,8 @@ async def _execute(question: str, top_k: int, history: list | None, retriever: L
     attempted: set[str] = set()
     assessment: dict = {"sufficient": False, "missing_evidence": []}
     stop_reason = "iteration_budget_exhausted"
-    max_iterations = 1 if mode == "rag" or plan.safe_exact else settings.max_iterations
+    prior_iterations = trace["iterations"]
+    max_iterations = 1 if mode == "rag" or plan.safe_exact else max(0, settings.max_iterations - prior_iterations)
     for iteration in range(max_iterations):
         queries = list(dict.fromkeys(query.strip() for query in queries if query.strip()))
         signature = hashlib.sha256(json.dumps(sorted(queries), ensure_ascii=False).encode()).hexdigest()
@@ -117,7 +130,7 @@ async def _execute(question: str, top_k: int, history: list | None, retriever: L
             old = accumulated.get(row["chunk_id"])
             if old is None or float(row.get("score", 0)) > float(old.get("score", 0)):
                 accumulated[row["chunk_id"]] = row
-        trace["iterations"] = iteration + 1
+        trace["iterations"] = prior_iterations + iteration + 1
         trace["tool_call_count"] += 1
         trace["actions"].append({"tool_name": "exact_legal_search" if plan.safe_exact else "search_legal_evidence", "status": "ok",
                                  "signature": signature, "result_count": len(rows), "new_evidence_count": new_count})
@@ -185,7 +198,8 @@ async def run_agent(question: str, top_k: int = 5, *, history: list | None = Non
         raise ValueError("执行模式不合法")
     request_id = request_id or str(uuid.uuid4())
     retriever = retriever or LegalRetriever()
-    trace: dict = {"mode": mode, "iterations": 0, "tool_call_count": 0, "actions": [], "events": [], "usage_events": [], "warnings": [], "runtime": "in_process"}
+    trace: dict = {"mode": mode, "iterations": 0, "decision_steps": 0, "controller": "rule_workflow" if mode == "agent" else "fixed_rag",
+                   "tool_call_count": 0, "actions": [], "events": [], "usage_events": [], "warnings": [], "runtime": "in_process"}
     with (capacity_guard or _CAPACITY_GUARD).slot(settings.max_concurrent_requests):
         try:
             return await asyncio.wait_for(_execute(question.strip(), top_k, history, retriever, model, settings, request_id, mode, trace),
@@ -206,5 +220,6 @@ async def agent_health(settings: AgentSettings | None = None) -> dict:
     return {"agent_ready": settings.enabled and knowledge["ready"], "enabled": settings.enabled,
             "runtime": "in_process", "retrieval_mode": RETRIEVAL_MODE, "requires_mcp": False,
             "llm_enabled": llm_configured, "llm_required": False,
+            "controller": "llm_loop" if llm_configured else "rule_workflow", "supports_model_loop": True,
             "budgets": {"iterations": settings.max_iterations, "model_calls": settings.max_llm_calls},
             "capacity": _CAPACITY_GUARD.snapshot(settings.max_concurrent_requests)}

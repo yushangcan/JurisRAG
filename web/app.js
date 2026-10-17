@@ -53,8 +53,10 @@ function safeHttpUrl(value) {
 /** 将不同的后端生成模式翻译成用户能直接看懂的中文。 */
 function generationModeLabel(mode) {
   const labels = {
-    agent_llm: "Agent 规划与模型归纳",
-    agent_evidence_fallback: "Agent 规划与原文回答",
+    agent_llm: "模型归纳",
+    agent_llm_loop: "模型决策与证据回答",
+    agent_llm_clarification: "模型请求补充事实",
+    agent_evidence_fallback: "规则检索与原文回答",
     agent_abstention: "Agent 证据不足拒答",
     agent_exact_reference: "指定法条原文",
     rag_llm: "基础检索与模型归纳",
@@ -204,16 +206,19 @@ function traceItem(label, value) {
  * 这些字段能说明是否精确查询、是否触发多路召回以及 Reranker 是否生效。
  */
 function renderTrace(agentTrace = {}, data = {}) {
+    const controllers = { llm_loop: "模型选择动作", rule_workflow: "离线规则流程", rule_fallback: "模型不可用，规则回退", fixed_rag: "固定检索流程", exact_reference: "精确法条定位" };
     const actions = (agentTrace.actions || [])
       .map((action) => `${action.tool_name}(${action.status || "unknown"})`)
       .join(" → ");
     elements.trace.replaceChildren(
       traceItem("执行模式", agentTrace.mode === "rag" ? "基础检索" : "法律检索助手"),
+      traceItem("控制方式", controllers[agentTrace.controller] || "未提供"),
       traceItem("意图", data.intent || "未提供"),
       traceItem("适用领域", data.domain || "uncertain"),
       traceItem("标准化问题", data.normalized_question || data.question),
       traceItem("法律争点", (data.legal_issues || []).join("；") || "未提供"),
       traceItem("检索轮数", agentTrace.iterations ?? 0),
+      traceItem("模型决策步数", agentTrace.decision_steps ?? 0),
       traceItem("检索操作数", agentTrace.tool_call_count ?? 0),
       traceItem("模型调用数", agentTrace.llm_call_count ?? 0),
       traceItem("工具轨迹", actions || "未调用搜索工具"),

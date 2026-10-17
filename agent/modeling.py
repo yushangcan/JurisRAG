@@ -111,6 +111,7 @@ async def invoke_schema(
 
     provider, model_name = _safe_model_identity(model)
     started = time.monotonic()
+    input_tokens = output_tokens = total_tokens = None
     try:
         invocation = model.ainvoke(prompt)
         response = (
@@ -118,6 +119,7 @@ async def invoke_schema(
             if timeout_seconds is not None
             else await invocation
         )
+        input_tokens, output_tokens, total_tokens = _response_tokens(response)
         content = response.content if isinstance(response.content, str) else str(response.content)
         parsed = schema.model_validate(parse_json_object(content))
     except BaseException as exc:
@@ -128,6 +130,9 @@ async def invoke_schema(
                     node=node,
                     provider=provider,
                     model=model_name,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
                     duration_ms=round((time.monotonic() - started) * 1000, 2),
                     success=False,
                     error_type=type(exc).__name__,
@@ -135,7 +140,6 @@ async def invoke_schema(
             )
         raise
 
-    input_tokens, output_tokens, total_tokens = _response_tokens(response)
     if usage_events is not None:
         usage_events.append(
             LLMCallUsage(

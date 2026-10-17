@@ -54,7 +54,7 @@ def test_exact_reference_has_no_unrelated_articles_or_model_call():
 
 
 def test_multiple_references_are_paired_with_their_own_title():
-    result = ask("政府采购法第五十二条和政府采购质疑和投诉办法第十三条如何衔接？")
+    result = ask("政府采购法第五十二条和政府采购质疑和投诉办法第十三条原文分别是什么？")
     assert {(row["document_title"], row["article_or_position"]) for row in result["citations"]} == {
         ("中华人民共和国政府采购法", "第五十二条"), ("政府采购质疑和投诉办法", "第十三条")}
 

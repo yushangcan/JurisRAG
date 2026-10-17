@@ -2,6 +2,8 @@
 
 当前实现使用 evaluation.run_lightweight_eval。默认 model=None，不连接模型供应商；同时运行一轮基础 RAG 和有限检索 Agent，使用相同语料、证据门和返回数。
 
+2026-10-17已新增模型选择动作的循环；默认评测仍是离线规则回归，其结果不能当作模型循环成绩。真实qwen-plus普通路径、受控遗漏补查、早期失败和供应商用量见 [模型循环验收记录](../../docs/模型循环验收记录.md)。
+
 ## 当前报告
 
 - [lightweight_agent_v2.md](lightweight_agent_v2.md)：既有30题开发回归，其中21题有库内依据、9题是范围或能力边界。

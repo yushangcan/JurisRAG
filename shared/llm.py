@@ -29,6 +29,7 @@ class CompatibleChatModel:
 
     def invoke(self, prompt: str):
         payload = json.dumps({"model": self.model_name, "temperature": 0, "max_tokens": 1800,
+                              "response_format": {"type": "json_object"},
                               "messages": [{"role": "user", "content": prompt}]}, ensure_ascii=False).encode("utf-8")
         request = Request(self._url, data=payload, headers={
             "Content-Type": "application/json", "Authorization": "Bearer " + self._api_key,

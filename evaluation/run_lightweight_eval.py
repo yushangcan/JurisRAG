@@ -66,6 +66,8 @@ async def evaluate(dataset: Path, *, top_k: int = 5, with_llm: bool = False) -> 
                 "metrics": retrieval_metrics(ids, gold_ids), "latency_ms": round((perf_counter() - started) * 1000, 2),
                 "llm_call_count": result["agent_trace"]["llm_call_count"], "iterations": result["agent_trace"]["iterations"],
                 "llm_usage": result["agent_trace"]["llm_usage"], "generation_mode": result["generation_mode"], "warning": result["warning"],
+                "controller": result["agent_trace"]["controller"], "decision_steps": result["agent_trace"]["decision_steps"],
+                "actions": result["agent_trace"]["actions"],
                 "answer": result["answer"], "citations": result["citations"],
             })
     summary = {}
@@ -85,6 +87,8 @@ async def evaluate(dataset: Path, *, top_k: int = 5, with_llm: bool = False) -> 
             "mean_latency_ms": mean([row["latency_ms"] for row in rows]),
             "max_latency_ms": max(row["latency_ms"] for row in rows),
             "model_calls": sum(row["llm_call_count"] for row in rows),
+            "controller_counts": {controller: sum(row["controller"] == controller for row in rows)
+                                  for controller in sorted({row["controller"] for row in rows})},
         }
     model_events = [event for record in records for event in record["llm_usage"]["events"]]
     model_degraded = any(not event["success"] for event in model_events) or any(record["warning"] for record in records)

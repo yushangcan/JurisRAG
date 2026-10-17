@@ -53,3 +53,42 @@ class GroundedAnswer(StrictModel):
 class HistoryMessage(StrictModel):
     role: Literal["user", "assistant"]
     content: str = Field(min_length=1, max_length=2000)
+
+
+IssueText = Annotated[str, StringConstraints(min_length=1, max_length=160, strip_whitespace=True)]
+EvidenceId = Annotated[str, StringConstraints(min_length=1, max_length=300, strip_whitespace=True)]
+
+
+class SearchAction(SearchPlan):
+    type: Literal["search"]
+    references: list[ExactReference] = Field(default_factory=list, max_length=8)
+    issues: list[IssueText] = Field(default_factory=list, max_length=6)
+
+
+class ReadEvidenceAction(StrictModel):
+    type: Literal["read_evidence"]
+    evidence_ids: list[EvidenceId] = Field(min_length=1, max_length=10)
+
+
+class AgentClaim(AnswerClaim):
+    issues: list[IssueText] = Field(min_length=1, max_length=6)
+
+
+class AnswerAction(StrictModel):
+    type: Literal["answer"]
+    claims: list[AgentClaim] = Field(min_length=1, max_length=10)
+
+
+class ClarifyAction(StrictModel):
+    type: Literal["clarify"]
+    questions: list[IssueText] = Field(min_length=1, max_length=6)
+
+
+class RefuseAction(StrictModel):
+    type: Literal["refuse"]
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class AgentDecision(StrictModel):
+    action: Annotated[SearchAction | ReadEvidenceAction | AnswerAction | ClarifyAction | RefuseAction,
+                      Field(discriminator="type")]

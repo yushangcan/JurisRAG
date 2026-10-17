@@ -21,9 +21,18 @@ def endpoint(*, fail=False):
             if fail:
                 self.send_error(503, "private-provider-diagnostic")
                 return
-            passages = json.loads(payload["messages"][0]["content"].split("证据：", 1)[1])
-            claims = [{"text": row["text"], "quote": row["text"], "evidence_id": row["evidence_id"]} for row in passages]
-            body = json.dumps({"choices": [{"message": {"content": json.dumps({"claims": claims})}}],
+            state = json.loads(payload["messages"][0]["content"].split("\n状态：", 1)[1])
+            if not state["candidates"]:
+                action = {"type": "search", "queries": ["单一来源采购"],
+                          "references": [{"document_title": "政府采购法", "article_number": "第三十一条"}]}
+            elif not state["evidence"]:
+                row = next(row for row in state["candidates"] if row["article"] == "第三十一条")
+                action = {"type": "read_evidence", "evidence_ids": [row["evidence_id"]]}
+            else:
+                claims = [{"text": row["text"], "quote": row["text"], "evidence_id": row["evidence_id"],
+                           "issues": state["required_issues"]} for row in state["evidence"]]
+                action = {"type": "answer", "claims": claims}
+            body = json.dumps({"choices": [{"message": {"content": json.dumps({"action": action})}}],
                                "usage": {"prompt_tokens": 100, "completion_tokens": 60, "total_tokens": 160}}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -50,10 +59,12 @@ def endpoint(*, fail=False):
 def test_local_http_generation_keeps_grounding_and_supplier_usage():
     with endpoint() as (model, received):
         result = asyncio.run(run_agent("哪些情形可以采用单一来源采购？", 1, model=model))
-    assert result["generation_mode"] == "agent_llm"
-    assert result["agent_trace"]["llm_usage"]["total_tokens"] == 160
+    assert result["generation_mode"] == "agent_llm_loop"
+    assert result["agent_trace"]["llm_usage"]["total_tokens"] == 480
+    assert len(received) == 3
     assert received[0][0] == "/v1/chat/completions"
     assert received[0][1] == "Bearer test-key"
+    assert all(request[2]["response_format"] == {"type": "json_object"} for request in received)
     assert result["citations"][0]["quote"] in result["answer"]
 
 

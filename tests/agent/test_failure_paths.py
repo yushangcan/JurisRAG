@@ -62,7 +62,7 @@ def test_request_timeout_preserves_model_usage_and_releases_capacity():
                  settings=replace(get_agent_settings(), request_timeout_seconds=0.25, llm_timeout_seconds=2))
     assert result["stop_reason"] == "request_timeout"
     assert result["citations"] == []
-    assert result["agent_trace"]["iterations"] == 1
+    assert result["agent_trace"]["iterations"] == 0  # 模型先决策，超时前尚未执行检索。
     assert result["agent_trace"]["llm_call_count"] == 1
     assert result["agent_trace"]["llm_usage"]["events"][0]["error_type"] == "CancelledError"
     assert ask("政府采购法第二十二条")["status"] == "answered"
@@ -75,8 +75,8 @@ def test_valid_model_output_retains_real_quotes_and_reported_tokens():
             claims = [{"text": row["text"], "evidence_id": row["evidence_id"], "quote": row["text"]} for row in passages]
             return SimpleNamespace(content=json.dumps({"claims": claims}), usage_metadata={"input_tokens": 100, "output_tokens": 80, "total_tokens": 180})
 
-    result = ask("哪些情形可以采用单一来源采购？", model=QuotingModel(), top_k=1)
-    assert result["generation_mode"] == "agent_llm"
+    result = ask("哪些情形可以采用单一来源采购？", model=QuotingModel(), top_k=1, mode="rag")
+    assert result["generation_mode"] == "rag_llm"
     assert result["agent_trace"]["llm_usage"]["total_tokens"] == 180
     assert "原文：" in result["answer"]
 
@@ -97,8 +97,8 @@ def test_real_evidence_id_cannot_launder_unsupported_claims(tamper):
                 claim["text"] += "《政府采购法实施条例》第三十一条也如此规定。"
             return SimpleNamespace(content=json.dumps({"claims": [claim]}))
 
-    result = ask("哪些情形可以采用单一来源采购？", model=TamperingModel(), top_k=1)
-    assert result["generation_mode"] == "agent_evidence_fallback"
+    result = ask("哪些情形可以采用单一来源采购？", model=TamperingModel(), top_k=1, mode="rag")
+    assert result["generation_mode"] == "rag_evidence_fallback"
     assert "999" not in result["answer"] and "九百九十九" not in result["answer"]
 
 

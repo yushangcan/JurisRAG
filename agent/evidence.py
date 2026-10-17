@@ -52,11 +52,16 @@ def _unsupported_legal_references(
         _compact_reference(str(item.get("metadata", {}).get("title", "")))
         for item in evidence
     }
+    # 条文正文可能真实援引另一部法规或其他条号，不能把照录原文误判为编造。
+    allowed_titles.update(_compact_reference(title) for item in evidence
+                          for title in re.findall(r"《([^》]+)》", str(item.get("text", ""))))
     allowed_articles = {
         _compact_reference(str(item.get("metadata", {}).get("article_number", "")))
         for item in evidence
         if item.get("metadata", {}).get("article_number")
     }
+    allowed_articles.update(_compact_reference(article) for item in evidence
+                            for article in _ARTICLE_REFERENCE_PATTERN.findall(str(item.get("text", ""))))
     unsupported: list[str] = []
     for title in re.findall(r"《([^》]+)》", answer):
         compact_title = _compact_reference(title)
@@ -70,6 +75,8 @@ def _unsupported_legal_references(
         if article_value(article) not in {article_value(value) for value in allowed_articles}:
             unsupported.append(f"未引用条号{article}")
     allowed_numbers = {number_key(item.get("metadata", {}).get("document_number", "")) for item in evidence}
+    allowed_numbers.update(number_key(match.group(0)) for item in evidence
+                           for match in DOCUMENT_NUMBER_PATTERN.finditer(str(item.get("text", ""))))
     for match in DOCUMENT_NUMBER_PATTERN.finditer(answer):
         if number_key(match.group(0)) not in allowed_numbers:
             unsupported.append("未引用文号" + match.group(0))

@@ -18,10 +18,10 @@ def _bounded(name: str, default: int, maximum: int) -> int:
 @dataclass(frozen=True)
 class AgentSettings:
     enabled: bool = True
-    max_iterations: int = 2
-    max_llm_calls: int = 2
+    max_iterations: int = 3
+    max_llm_calls: int = 8
     llm_timeout_seconds: int = 20
-    request_timeout_seconds: int = 50
+    request_timeout_seconds: int = 120
     max_question_chars: int = 2000
     max_concurrent_requests: int = 2
 
@@ -29,10 +29,10 @@ class AgentSettings:
 def get_agent_settings() -> AgentSettings:
     return AgentSettings(
         enabled=os.getenv("ENABLE_AGENT", "true").lower() == "true",
-        max_iterations=_bounded("AGENT_MAX_ITERATIONS", 2, 2),
-        max_llm_calls=_bounded("AGENT_MAX_LLM_CALLS", 2, 2),
-        llm_timeout_seconds=_bounded("AGENT_LLM_TIMEOUT_SECONDS", 20, 25),
-        request_timeout_seconds=_bounded("AGENT_REQUEST_TIMEOUT_SECONDS", 50, 60),
+        max_iterations=_bounded("AGENT_MAX_ITERATIONS", 3, 6),
+        max_llm_calls=_bounded("AGENT_MAX_LLM_CALLS", 8, 12),
+        llm_timeout_seconds=_bounded("AGENT_LLM_TIMEOUT_SECONDS", 20, 60),
+        request_timeout_seconds=_bounded("AGENT_REQUEST_TIMEOUT_SECONDS", 120, 300),
         max_question_chars=_bounded("AGENT_MAX_QUESTION_CHARS", 2000, 2000),
         max_concurrent_requests=_bounded("AGENT_MAX_CONCURRENT_REQUESTS", 2, 8),
     )

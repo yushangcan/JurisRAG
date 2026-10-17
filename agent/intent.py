@@ -88,7 +88,7 @@ def plan_question(question: str) -> QueryPlan:
         and article_value(ref.article_number) == article_value(source.article_number)
         for ref in refs for source in need.sources) for need in plan.needs)
     # 附带条号不等于只查原文；新增材料、投诉等争点不能被快速路径吞掉。
-    if refs and any(ref.article_number for ref in refs) and not judgment and issues_in_requested_articles and not re.search(r"起诉|诉讼|赔偿|时效|救济|后果|如何计算|截止|哪一天", question):
+    if refs and any(ref.article_number for ref in refs) and not judgment and issues_in_requested_articles and not re.search(r"起诉|诉讼|赔偿|时效|救济|后果|如何计算|截止|哪一天|衔接|区别|比较|关系|联系|结合|分析|适用|解读|解释|为什么", question):
         plan.primary_intent = "exact_reference"
         plan.safe_exact = True
     if len(plan.needs) > 6:

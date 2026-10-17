@@ -42,7 +42,8 @@ def validate_claims(draft: GroundedAnswer, evidence: list[dict], plan: QueryPlan
         if ("不得" in claim.quote or "禁止" in claim.quote) and any(word in claim.text for word in ("可以任意", "可以随意", "不受限制")):
             errors.append("模型陈述与证据中的禁止性规定冲突")
         # 用户问题中的数字不是法定标准的证据。
-        errors.extend(_unsupported_generated_facts(claim.text, "", claim.quote))
+        errors.extend("陈述中的数值或限定事实未获本条引文支持：" + fact
+                      for fact in _unsupported_generated_facts(claim.text, "", claim.quote))
         errors.extend(_unsupported_legal_references(claim.text, [row]))
         if any(word in claim.text and word not in claim.quote for word in ("一定", "一律", "必然", "保证", "当然否决")):
             errors.append("模型把规则扩大为绝对结论")

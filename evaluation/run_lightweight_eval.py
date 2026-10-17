@@ -40,7 +40,7 @@ def implementation_hash() -> str:
 
 
 async def evaluate(dataset: Path, *, top_k: int = 5, with_llm: bool = False) -> dict:
-    model = build_chat_model() if with_llm else None
+    model = build_chat_model(timeout=get_agent_settings().llm_timeout_seconds) if with_llm else None
     if with_llm and model is None:
         raise ValueError("--with-llm 要求显式启用并完整配置模型；本次未执行模型评测")
     cases = [json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines() if line.strip()]

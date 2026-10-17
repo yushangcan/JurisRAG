@@ -123,6 +123,8 @@ async def invoke_schema(
         content = response.content if isinstance(response.content, str) else str(response.content)
         parsed = schema.model_validate(parse_json_object(content))
     except BaseException as exc:
+        if getattr(exc, "usage_metadata", None) is not None:
+            input_tokens, output_tokens, total_tokens = _response_tokens(exc)
         # CancelledError 也必须留下失败记录后继续向上抛出，不能吞掉任务取消信号。
         if usage_events is not None:
             usage_events.append(

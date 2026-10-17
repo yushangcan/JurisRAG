@@ -49,19 +49,26 @@ RERANK_CANDIDATES = 20
 
 def get_llm_settings() -> dict[str, str | bool]:
     """仅供模型工厂读取，调用方不得记录整个对象或其中的密钥。"""
-    provider = os.getenv("LLM_PROVIDER", "deepseek").lower()
+    provider = os.getenv("LLM_PROVIDER", "codez").strip().lower()
     options = {
+        "codez": ("CODEZ", "https://api-sss.zwenooo.link/v1", "gpt-6.1-sol"),
         "deepseek": ("DEEPSEEK", "https://api.deepseek.com/v1", "deepseek-chat"),
         "dashscope": ("DASHSCOPE", "https://dashscope.aliyuncs.com/compatible-mode/v1", "qwen-plus"),
         "openai": ("OPENAI", "https://api.openai.com/v1", ""),
     }
     if provider not in options:
-        raise ValueError("LLM_PROVIDER 只支持 deepseek、dashscope、openai")
+        raise ValueError("LLM_PROVIDER 只支持 codez、deepseek、dashscope、openai")
     prefix, base_url, model = options[provider]
+    wire_api = os.getenv("LLM_WIRE_API", "responses" if provider == "codez" else "chat").strip().lower()
+    if wire_api not in {"responses", "chat"}:
+        raise ValueError("LLM_WIRE_API 只能是 responses 或 chat")
     return {
         "enabled": os.getenv("ENABLE_LLM", "false").lower() == "true",
         "provider": provider,
         "api_key": os.getenv(f"{prefix}_API_KEY", "").strip(),
         "base_url": os.getenv(f"{prefix}_BASE_URL", "").strip() or base_url,
         "model": os.getenv(f"{prefix}_MODEL", model).strip(),
+        "wire_api": wire_api,
+        "reasoning_effort": os.getenv("LLM_REASONING_EFFORT", "max" if provider == "codez" else "").strip(),
+        "disable_response_storage": os.getenv("DISABLE_RESPONSE_STORAGE", "true").lower() == "true",
     }

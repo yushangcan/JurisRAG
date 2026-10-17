@@ -22,6 +22,6 @@ def test_multisource_metrics_require_all_gold():
 
 
 def test_model_evaluation_cannot_silently_run_without_model(monkeypatch):
-    monkeypatch.setattr("evaluation.run_lightweight_eval.build_chat_model", lambda: None)
+    monkeypatch.setattr("evaluation.run_lightweight_eval.build_chat_model", lambda **kwargs: None)
     with pytest.raises(ValueError, match="未执行模型评测"):
         asyncio.run(evaluate(DEFAULT_DATASET, with_llm=True))

@@ -19,7 +19,7 @@ $env:RETRIEVAL_MODE='lexical'
 .\.venv-lite\Scripts\python.exe run_api.py
 ~~~
 
-打开 [本地页面](http://127.0.0.1:8000) 或 [API 文档](http://127.0.0.1:8000/docs)。已有 .venv-lite 时无需再次创建。在本机 `.env` 中设置 `ENABLE_LLM=true`、`LLM_PROVIDER` 与对应 Key、模型名。新 `.env.example` 已开启模型开关，但未填写 Key；未配置时仍能使用规则模式。旧 `.env` 中的预算可按下文更新。需要强制离线时，在启动前设置 `$env:ENABLE_LLM='false'`。
+打开 [本地页面](http://127.0.0.1:8000) 或 [API 文档](http://127.0.0.1:8000/docs)。已有 .venv-lite 时无需再次创建。当前模型配置为CodeZ的 `gpt-6.1-sol`，使用Responses接口、`max`推理强度及 `store=false`；只需在本机 `.env` 配置 `CODEZ_API_KEY`。`.env.example` 不包含密钥，未配置时仍能使用规则模式。需要强制离线时，在启动前设置 `$env:ENABLE_LLM='false'`。
 
 索引缺失时，接口会明确提示先建库。建库读取已提交并冻结摘要的 Markdown，不需要安装 PDF、Word 解析库。当前 80 份来源记录去重后得到 **66 份文档、1,565 个父法条/章节、2,299 个检索子块**。本机默认 SQLite 文件约 18.34 MiB。
 
@@ -55,6 +55,8 @@ $env:RETRIEVAL_MODE='lexical'
 ~~~
 
 默认最多 3 轮搜索、8 次模型决策、2 个并发请求。单次模型等待默认 20 秒，总请求等待默认 120 秒；配置上限分别为 6 轮、12 次、8 并发、60 秒、300 秒。`AGENT_MAX_ITERATIONS` 限制搜索次数，读取与回答也会消耗模型调用预算。重复动作、连续无新证据或预算耗尽均会停止。旧 `.env` 中的值仍会覆盖默认值，需要同步更新。基础 RAG 继续只检索一轮并可作一次模型归纳。
+
+CodeZ的本机配置及 `.env.example` 将单次和总体等待分别设为60秒、300秒，为 `max` 推理保留时间；仍受上述调用与搜索预算限制。
 
 模型自行选择查询、精确查找参数和父证据ID，可以增加待查争点；已有争点与用户指定引用不能静默删除。程序检查正式引用和已有场景法源要求，未知场景的语义相关性由模型判断。候选必须读取父证据后才允许引用，最终最多 `top_k` 条；校验失败不会把候选变成正式引用。模型判断和程序规则都不能保证法律正确性。
 
@@ -121,7 +123,9 @@ Agent 请求可增加 history（最多 6 条，每条最多 2,000 字）和 debu
 | requirements-semantic.txt | 可选 BGE 向量与 ONNX 重排 |
 | requirements-mcp.txt | 可选 MCP 对外工具出口 |
 
-模型循环在本机 .env 中设置 ENABLE_LLM=true、LLM_PROVIDER 与对应 Key/模型名。支持 DeepSeek、DashScope、OpenAI 兼容接口；主依赖无需增加模型 SDK。不要提交或打印密钥。模型配置不完整或请求失败时仍可使用规则原文回退；明确法条原文查询始终不调用模型。
+Agent的所有决策、回答、固定RAG归纳及 `--with-llm` 评测生成共用 `shared.llm.build_chat_model`。当前默认 `LLM_PROVIDER=codez`、`CODEZ_BASE_URL=https://api-sss.zwenooo.link/v1`、`CODEZ_MODEL=gpt-6.1-sol`、`LLM_WIRE_API=responses`、`LLM_REASONING_EFFORT=max`、`DISABLE_RESPONSE_STORAGE=true`。请求使用Bearer密钥认证，Responses请求的 `reasoning.effort` 与 `store` 按上述值发送；`store=false` 是接口参数，第三方网关的日志保留行为无法由客户端保证。
+
+仍保留DeepSeek、DashScope和OpenAI兼容配置，旧Chat接口需显式设置 `LLM_WIRE_API=chat`。主依赖无需增加模型SDK；模型配置不完整或请求失败时使用规则原文回退。明确法条原文查询始终不调用模型。用户提供的Codex TOML中 `notify`、`[windows]` 属于桌面客户端设置，不在项目中执行，也不修改全局Codex配置。配置变更验证见 [CodeZ切换记录](docs/CodeZ模型切换记录.md)。
 
 需要语义检索时安装 requirements-semantic.txt，使用 scripts.download_models 准备模型，设置 RETRIEVAL_MODE=hybrid、正确的 EMBEDDING_MODEL_PATH，再重建索引。可选 RERANKER_BACKEND=bge_reranker_base_onnx；默认 none。向量存在同一 SQLite，使用标准库余弦扫描，适合当前小型语料，不面向百万级数据。hash 向量仅用于确定性检查，不能称为语义模型。模型健康检查只检查文件与依赖，不代表推理已成功。
 

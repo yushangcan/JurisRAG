@@ -6,6 +6,7 @@
 
 ## 当前报告
 
+- [baseline_vs_agent_20261019.md](baseline_vs_agent_20261019.md)：基于2026-10-17同一批实测逐题重算的“基线→当前Agent→绝对/相对变化”对照，分开呈现最终引用覆盖、正式作答、配对RAGAS和运行开销。
 - [current_codez_ragas_20261017.md](current_codez_ragas_20261017.md)：当前 CodeZ 模型版的30题实测，固定 RAG 与 Agent 并列；21道有依据题计算五项真实 RAGAS 指标，9道边界题检查拒答。报告包含有效评分数、回退、Token和配对差值，以报告状态为准。
 - [lightweight_agent_v2.md](lightweight_agent_v2.md)：既有30题开发回归，其中21题有库内依据、9题是范围或能力边界。
 - [lightweight_gold50_v2.md](lightweight_gold50_v2.md)：既有50题检索开发回归。
